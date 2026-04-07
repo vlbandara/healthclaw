@@ -1,31 +1,4 @@
 {$DOMAIN} {
     encode zstd gzip
-
-    handle /onboard/* {
-        reverse_proxy onboarding:8080
-    }
-
-    handle /setup/* {
-        reverse_proxy onboarding:8080
-    }
-
-    handle /api/onboard/* {
-        reverse_proxy onboarding:8080
-    }
-
-    handle /api/setup/* {
-        reverse_proxy onboarding:8080
-    }
-
-    handle /static/* {
-        reverse_proxy onboarding:8080
-    }
-
-    handle /healthz {
-        reverse_proxy onboarding:8080
-    }
-
-    handle {
-        respond "nanobot health edge is up" 200
-    }
+    reverse_proxy orchestrator:8080
 }

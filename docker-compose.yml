@@ -6,10 +6,8 @@ x-common-config: &common-config
     - ~/.nanobot:/home/nanobot/.nanobot
   environment:
     MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
     HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
-    WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
   cap_drop:
     - ALL
   cap_add:
@@ -19,77 +17,22 @@ x-common-config: &common-config
     - seccomp=unconfined
 
 services:
-  nanobot-gateway:
-    container_name: nanobot-gateway
+  orchestrator:
     <<: *common-config
-    command: ["gateway"]
-    restart: unless-stopped
-    depends_on:
-      - whatsapp-bridge
-    environment:
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
-      HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
-      WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
-      NANOBOT_GATEWAY__MULTI_TENANT: ${NANOBOT_MULTI_TENANT:-false}
-      NANOBOT_GATEWAY__TENANTS_DIR: /home/nanobot/.nanobot/tenants
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-  
-  nanobot-cli:
-    <<: *common-config
-    profiles:
-      - cli
-    command: ["status"]
-    stdin_open: true
-    tty: true
-
-  onboarding:
-    <<: *common-config
-    container_name: nanobot-onboarding
+    container_name: nanohealth-orchestrator
     entrypoint: ["python", "-m", "uvicorn"]
     command: ["nanobot.health.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
       HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
       NANOBOT_WORKSPACE: /home/nanobot/.nanobot/workspace
+      NANOBOT_HEALTH_INSTANCE_IMAGE: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-nanobot-ai:latest}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/healthz || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  whatsapp-bridge:
-    <<: *common-config
-    container_name: nanobot-whatsapp-bridge
-    entrypoint: ["/bin/bash", "-lc"]
-    command: ["cd /app/bridge && npm start"]
-    environment:
-      AUTH_DIR: /home/nanobot/.nanobot/whatsapp-auth
-      BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('net').createConnection(3001,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -103,7 +46,7 @@ services:
     image: caddy:2.9-alpine
     container_name: nanobot-caddy
     depends_on:
-      - onboarding
+      - orchestrator
     ports:
       - "80:80"
       - "443:443"

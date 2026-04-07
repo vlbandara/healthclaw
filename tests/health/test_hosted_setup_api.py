@@ -73,7 +73,7 @@ def test_setup_page_and_provider_submission(tmp_path: Path, monkeypatch: pytest.
 
     page = client.get(f"/setup/{token}")
     assert page.status_code == 200
-    assert "Set up your assistant" in page.text
+    assert "Set up your coach" in page.text
 
     resp = client.post(
         f"/api/setup/{token}/provider",
@@ -147,7 +147,7 @@ def test_setup_rejects_activation_without_connected_channel(
 
     resp = client.post(f"/api/setup/{token}/activate")
     assert resp.status_code == 400
-    assert "Connect Telegram or WhatsApp first." in resp.json()["detail"]
+    assert "Connect Telegram first." in resp.json()["detail"]
 
 
 def test_setup_whatsapp_status_uses_bridge_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

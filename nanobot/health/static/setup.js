@@ -6,48 +6,18 @@ const activateButton = document.getElementById("activate");
 const statusNode = document.getElementById("status");
 const completionNode = document.getElementById("completion");
 const completionActions = document.getElementById("completion-actions");
-const providerSummary = document.getElementById("provider-summary");
-const providerHint = document.getElementById("provider-hint");
 const telegramSummary = document.getElementById("telegram-summary");
-const whatsappSummary = document.getElementById("whatsapp-summary");
-const whatsappQrNode = document.getElementById("whatsapp-qr");
 const finishSummary = document.getElementById("finish-summary");
 const connectTelegramButton = document.getElementById("connect-telegram");
 
 let currentStep = 0;
 let setupState = null;
-let whatsappPoll = null;
-const providerLabels = {
-  minimax: "MiniMax",
-  openrouter: "OpenRouter",
-};
-const providerHints = {
-  minimax: "Use your MiniMax key from your MiniMax account.",
-  openrouter: "Use your OpenRouter key from your OpenRouter account.",
-};
 
 function parseLines(value) {
   return (value || "")
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function selectedProvider() {
-  return field("provider").value || "minimax";
-}
-
-function providerLabel(provider) {
-  return providerLabels[provider] || "Your AI provider";
-}
-
-function refreshProviderHint() {
-  const provider = selectedProvider();
-  providerHint.textContent = providerHints[provider] || "Paste the API key for the AI service you want to use.";
-}
-
-function qrImageUrl(payload) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payload)}`;
 }
 
 function updateStep() {
@@ -107,14 +77,6 @@ function fillProfile(profile) {
     }
     setFieldValue(name, value);
   });
-}
-
-function applyProviderSelection(provider) {
-  const select = field("provider");
-  if (select && provider) {
-    select.value = provider;
-  }
-  refreshProviderHint();
 }
 
 function renderCompletion(links) {
@@ -199,12 +161,6 @@ async function refreshStatus() {
   const token = form.dataset.setupToken;
   setupState = await fetchJson(`/api/setup/${token}/status`);
 
-  const provider = setupState.provider || {};
-  applyProviderSelection(provider.provider || selectedProvider());
-  providerSummary.textContent = provider.validated_at
-    ? `${providerLabel(provider.provider)} is ready. ${provider.api_key_masked || ""}`.trim()
-    : `${providerLabel(selectedProvider())} is not connected yet.`;
-
   const telegram = (setupState.channels || {}).telegram || {};
   telegramSummary.textContent = telegram.connected
     ? `Connected as @${telegram.bot_username || "your_bot"}.`
@@ -213,48 +169,14 @@ async function refreshStatus() {
     setFieldValue("preferred_channel", "telegram");
   }
 
-  const whatsapp = (setupState.channels || {}).whatsapp || {};
-  whatsappSummary.textContent = whatsapp.connected
-    ? "WhatsApp is connected."
-    : whatsapp.status === "qr_ready"
-      ? "Scan the QR code with WhatsApp to finish connecting."
-      : "Waiting for WhatsApp connection.";
-  if (whatsapp.connected && whatsapp.phone) {
-    whatsappSummary.textContent = `WhatsApp is connected on ${whatsapp.phone}.`;
-  }
-
-  const qr = whatsapp.qr || "";
-  if (qr) {
-    whatsappQrNode.innerHTML = `<img src="${qrImageUrl(qr)}" alt="WhatsApp QR code" />`;
-  } else {
-    whatsappQrNode.textContent = whatsapp.connected ? "WhatsApp connected." : "Waiting for QR code…";
-  }
-
   fillProfile(setupState.profile);
   finishSummary.textContent = setupState.activationReady
     ? "Everything looks ready. Turn on your assistant when you’re ready."
-    : "You can activate once your AI key is checked, at least one chat app is connected, and your profile is saved.";
+    : "You can activate once Telegram is connected and your profile is saved.";
 
   if (setupState.state === "active") {
     renderCompletion(setupState.channelLinks || {});
   }
-}
-
-async function saveProvider() {
-  const provider = selectedProvider();
-  const apiKey = field("api_key").value.trim();
-  if (!apiKey) {
-    throw new Error(`Paste your ${providerLabel(provider)} API key first.`);
-  }
-  const token = form.dataset.setupToken;
-  setStatus(`Checking your ${providerLabel(provider)} API key…`);
-  await fetchJson(`/api/setup/${token}/provider`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider, api_key: apiKey }),
-  });
-  await refreshStatus();
-  setStatus(`${providerLabel(provider)} is connected.`);
 }
 
 async function saveTelegram() {
@@ -287,7 +209,7 @@ async function saveProfile() {
 
 async function activateSetup() {
   const token = form.dataset.setupToken;
-  setStatus("Turning on your assistant…");
+  setStatus("Spinning up your coach…");
   const data = await fetchJson(`/api/setup/${token}/activate`, {
     method: "POST",
   });
@@ -295,42 +217,9 @@ async function activateSetup() {
   renderCompletion(data.channelLinks || {});
 }
 
-async function loadWhatsAppStatus() {
-  const token = form.dataset.setupToken;
-  try {
-    const [status, qr] = await Promise.all([
-      fetchJson(`/api/setup/${token}/channels/whatsapp/status`),
-      fetchJson(`/api/setup/${token}/channels/whatsapp/qr`),
-    ]);
-    if (setupState) {
-      setupState.channels = setupState.channels || {};
-      setupState.channels.whatsapp = {
-        ...(setupState.channels.whatsapp || {}),
-        ...status,
-        connected: (status.status || "") === "connected",
-      };
-    }
-    if ((status.status || "") === "connected") {
-      whatsappSummary.textContent = status.phone
-        ? `WhatsApp is connected on ${status.phone}.`
-        : "WhatsApp is connected.";
-      whatsappQrNode.textContent = "WhatsApp connected.";
-      finishSummary.textContent = "Your chat app is ready. Save your profile, then turn on your assistant.";
-    } else if (qr.qr) {
-      whatsappSummary.textContent = "Scan the QR code with WhatsApp to finish connecting.";
-      whatsappQrNode.innerHTML = `<img src="${qrImageUrl(qr.qr)}" alt="WhatsApp QR code" />`;
-    }
-  } catch (_error) {
-    // Keep the UI usable even if the bridge is offline.
-  }
-}
-
 async function handleNext() {
   try {
     if (currentStep === 0) {
-      if (!((setupState?.provider || {}).validated_at)) {
-        await saveProvider();
-      }
       currentStep += 1;
       updateStep();
       return;
@@ -343,7 +232,7 @@ async function handleNext() {
       const channels = setupState?.channels || {};
       const hasConnectedChannel = Object.values(channels).some((channel) => channel && channel.connected);
       if (!hasConnectedChannel) {
-        throw new Error("Connect Telegram, WhatsApp, or both before you continue.");
+        throw new Error("Connect Telegram before you continue.");
       }
       currentStep += 1;
       updateStep();
@@ -379,17 +268,7 @@ activateButton.addEventListener("click", async () => {
     setStatus(error.message || "Unable to activate your assistant.", true);
   }
 });
-field("provider").addEventListener("change", () => {
-  refreshProviderHint();
-  providerSummary.textContent = `${providerLabel(selectedProvider())} is not connected yet.`;
-});
 
 updateStep();
-refreshProviderHint();
 refreshStatus().catch(() => {});
-whatsappPoll = window.setInterval(loadWhatsAppStatus, 3000);
-window.addEventListener("beforeunload", () => {
-  if (whatsappPoll) {
-    window.clearInterval(whatsappPoll);
-  }
-});
+

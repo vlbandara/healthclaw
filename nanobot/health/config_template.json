@@ -1,0 +1,40 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "/data/workspace",
+      "provider": "minimax",
+      "model": "MiniMax-M2.7",
+      "timezone": "UTC",
+      "maxToolIterations": 8,
+      "dream": {
+        "enabled": true,
+        "intervalMinutes": 60,
+        "maxHistoryEntries": 200
+      }
+    }
+  },
+  "providers": {
+    "minimax": {
+      "apiKey": "ENV:MINIMAX_API_KEY"
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "ENV:TELEGRAM_BOT_TOKEN",
+      "allowFrom": ["*"],
+      "sendProgress": true,
+      "sendToolHints": false
+    }
+  },
+  "gateway": {
+    "heartbeat": {
+      "enabled": true,
+      "intervalSeconds": 1800
+    }
+  },
+  "tools": {
+    "restrictToWorkspace": true
+  }
+}
+

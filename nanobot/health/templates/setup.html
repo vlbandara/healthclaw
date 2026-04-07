@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Health Assistant Setup</title>
+    <title>NanoHealth Setup</title>
     <link rel="stylesheet" href="/static/onboard.css" />
   </head>
   <body>
     <main class="shell">
       <section class="card">
         <header>
-          <p class="eyebrow">health assistant</p>
-          <h1>Set up your assistant</h1>
-          <p class="lede">A few short steps. Add your AI key, connect your chat app, tell us about you, and you’re ready.</p>
+          <p class="eyebrow">nanohealth</p>
+          <h1>Set up your coach</h1>
+          <p class="lede">A few short steps. Tell us who you are, connect Telegram, and you’re ready.</p>
         </header>
 
         <form
@@ -22,58 +22,34 @@
           data-whatsapp-url="{{ channel_links.whatsapp or '' }}"
         >
           <section class="step active" data-step="1">
-            <h2>Choose your AI</h2>
-            <p class="step-copy">Choose the AI service you want to use, then paste your API key and we’ll check it.</p>
-            <label>AI provider
-              <select name="provider">
-                {% for provider_name, provider_meta in provider_choices.items() %}
-                <option value="{{ provider_name }}">{{ provider_meta.label }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <p id="provider-hint" class="helper">Use your MiniMax key from your MiniMax account.</p>
-            <label>API key <input name="api_key" autocomplete="off" /></label>
-            <p id="provider-summary" class="helper"></p>
+            <h2>About you</h2>
+            <p class="step-copy">This helps your coach feel personal, not generic.</p>
+            <label>Full name <input name="full_name" required /></label>
+            <label>Timezone <input name="timezone" value="UTC" required /></label>
+            <label>Age range <input name="age_range" placeholder="25-34" required /></label>
           </section>
 
           <section class="step" data-step="2">
-            <h2>Connect your chat apps</h2>
-            <p class="step-copy">Connect Telegram, WhatsApp, or both. You only need one to activate your assistant.</p>
+            <h2>Connect Telegram</h2>
+            <p class="step-copy">Create a bot in BotFather, then paste the token here.</p>
             <div class="channel-grid">
               <section class="channel-card">
-                <h3>Telegram</h3>
+                <h3>Telegram bot</h3>
                 <p>Paste the bot token from BotFather.</p>
                 <label>Bot token <input name="telegram_bot_token" autocomplete="off" /></label>
                 <button type="button" id="connect-telegram">Connect Telegram</button>
                 <p id="telegram-summary" class="helper"></p>
               </section>
-              <section class="channel-card">
-                <h3>WhatsApp</h3>
-                <p>Scan the QR code with WhatsApp on your phone.</p>
-                <div id="whatsapp-qr" class="qr-box">Waiting for QR code…</div>
-                <p id="whatsapp-summary" class="helper"></p>
-              </section>
             </div>
           </section>
 
           <section class="step" data-step="3">
-            <h2>Tell us about you</h2>
-            <label>Full name <input name="full_name" required /></label>
-            <label>Email <input name="email" type="email" /></label>
-            <label>Phone <input name="phone" /></label>
-            <label>Timezone <input name="timezone" value="UTC" required /></label>
+            <h2>Your goals</h2>
+            <p class="step-copy">Quick context so your coach can push you in the right direction.</p>
             <label>Language <input name="language" value="en" required /></label>
-            <label>Preferred chat app
-              <select name="preferred_channel">
-                <option value="telegram">Telegram</option>
-                <option value="whatsapp">WhatsApp</option>
-              </select>
-            </label>
-            <label>Age range <input name="age_range" placeholder="35-44" required /></label>
+            <input type="hidden" name="preferred_channel" value="telegram" />
             <label>Sex <input name="sex" placeholder="female / male / intersex / prefer not to say" required /></label>
             <label>Gender <input name="gender" placeholder="woman / man / non-binary / prefer not to say" required /></label>
-            <label>Height (cm) <input name="height_cm" type="number" step="0.1" /></label>
-            <label>Weight (kg) <input name="weight_kg" type="number" step="0.1" /></label>
             <label>Known conditions <textarea name="known_conditions" placeholder="One per line"></textarea></label>
             <label>Medications <textarea name="medications" placeholder="One per line"></textarea></label>
             <label>Allergies <textarea name="allergies" placeholder="One per line"></textarea></label>

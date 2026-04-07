@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from nanobot.health.bootstrap import persist_health_onboarding
+from nanobot.health.registry import HealthRegistry
+from nanobot.health.spawner import HealthInstanceSpawner
 from nanobot.health.hosted import (
     PROVIDER_CHOICES,
     WhatsAppBridgeMonitor,
@@ -24,6 +27,11 @@ from nanobot.health.hosted import (
     validate_telegram_bot_token,
 )
 from nanobot.health.storage import HealthWorkspace, get_health_vault_secret
+
+
+class SignupSubmission(BaseModel):
+    name: str = Field(min_length=1)
+    timezone: str = "UTC"
 
 
 class Phase1Submission(BaseModel):
@@ -182,6 +190,8 @@ def create_app() -> FastAPI:
     app.state.health = health
     app.state.health_secret = get_health_vault_secret()
     app.state.channel_links = _channel_links()
+    app.state.registry = HealthRegistry()
+    app.state.spawner = HealthInstanceSpawner()
 
     monitor = WhatsAppBridgeMonitor(
         bridge_url=get_whatsapp_bridge_url(),
@@ -213,6 +223,21 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/", response_class=HTMLResponse)
+    async def landing(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(request, "landing.html", {})
+
+    @app.post("/api/signup")
+    async def signup(submission: SignupSubmission) -> JSONResponse:
+        user = await app.state.registry.create_user(
+            name=submission.name,
+            timezone=submission.timezone or "UTC",
+        )
+        # For now, reuse the existing single-workspace setup session storage.
+        # The next iteration will map setup tokens to per-user staging workspaces.
+        token, _setup = health.get_or_create_setup_session()
+        return JSONResponse({"status": "ok", "setupToken": token, "userId": user.id})
 
     @app.get("/setup/{setup_token}", response_class=HTMLResponse)
     async def setup_form(request: Request, setup_token: str) -> HTMLResponse:
@@ -347,19 +372,14 @@ def create_app() -> FastAPI:
             fallback_links=app.state.channel_links,
             bridge_snapshot=monitor.snapshot,
         )
-        provider_ok = bool(payload["provider"].get("validated_at"))
-        if not provider_ok and os.environ.get(
-            "NANOBOT_SKIP_SETUP_PROVIDER", ""
-        ).strip().lower() in {"1", "true", "yes", "on"}:
-            provider_ok = True
-        if not provider_ok:
-            raise HTTPException(status_code=400, detail="Add your AI key first.")
+        # Hosted: provider is injected by the service (MiniMax) so the UI doesn't ask for it.
+        provider_ok = True
         if not any(
             bool(item.get("connected"))
             for item in payload["channels"].values()
             if isinstance(item, dict)
         ):
-            raise HTTPException(status_code=400, detail="Connect Telegram or WhatsApp first.")
+            raise HTTPException(status_code=400, detail="Connect Telegram first.")
         submission = health.load_profile_draft_submission(secret=app.state.health_secret)
         if not submission:
             raise HTTPException(status_code=400, detail="Tell us about you before activation.")
@@ -392,6 +412,11 @@ def create_app() -> FastAPI:
                 "channelLinks": links,
             }
         )
+
+    @app.get("/api/admin/status")
+    async def admin_status() -> JSONResponse:
+        users = await app.state.registry.list_users()
+        return JSONResponse({"status": "ok", "users": users})
 
     @app.get("/onboard/{invite}", response_class=HTMLResponse)
     async def onboard_form(request: Request, invite: str) -> HTMLResponse:
