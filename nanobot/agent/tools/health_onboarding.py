@@ -16,7 +16,7 @@ from nanobot.health.storage import get_health_vault_secret
     tool_parameters_schema(
         submission_json=StringSchema(
             "JSON string with top-level keys phase1 and phase2. "
-            "phase1: full_name, email, phone, timezone, language, preferred_channel, "
+            "phase1: full_name, location, email, phone, timezone, language, preferred_channel, "
             "age_range, sex, gender, height_cm, weight_kg, known_conditions, medications, "
             "allergies, wake_time, sleep_time, consents (array). "
             "phase2: mood_interest, mood_down (0-3), activity_level, nutrition_quality, "

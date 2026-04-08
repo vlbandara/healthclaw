@@ -22,3 +22,14 @@ This file stores durable, pseudonymized health observations.
 ## Goals And Supports
 
 - Preserve stable motivations, barriers, and routines that help the user stay consistent.
+
+## Lifecycle
+
+- Stage: onboarding
+- Days active: 0
+- Total interactions: 0
+- Streak: 0 days
+- Last mood trend: stable
+- Trust level: probing
+
+Dream should advance **Stage** (onboarding → early → settling → established → deep) when conversation depth and days support it; update counts conservatively from session patterns.

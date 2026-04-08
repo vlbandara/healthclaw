@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -30,6 +30,11 @@ from nanobot.health.hosted import (
     validate_provider_credentials,
     validate_telegram_bot_token,
 )
+from nanobot.health.chat_workspace import (
+    parse_lifecycle_stage,
+    resolve_health_chat_workspace,
+    rough_knowledge_score,
+)
 from nanobot.health.storage import HealthWorkspace, get_health_vault_secret
 from nanobot.health import metrics as health_metrics
 
@@ -42,6 +47,7 @@ class SignupSubmission(BaseModel):
 class Phase1Submission(BaseModel):
     # Minimal onboarding: most fields are optional; the service will backfill defaults.
     full_name: str = ""
+    location: str = ""
     email: str = ""
     phone: str = ""
     timezone: str = "UTC"
@@ -115,6 +121,33 @@ class ProviderSetupSubmission(BaseModel):
 
 class TelegramSetupSubmission(BaseModel):
     bot_token: str = Field(min_length=1)
+
+
+class WebChatMessage(BaseModel):
+    message: str = Field(min_length=1, max_length=32000)
+
+
+def _web_chat_nanobot(app: FastAPI, workspace: Path) -> Any:
+    from nanobot.nanobot import Nanobot
+
+    cache = getattr(app.state, "web_chat_nanobots", None)
+    if cache is None:
+        app.state.web_chat_nanobots = {}
+        cache = app.state.web_chat_nanobots
+    key = str(workspace.resolve())
+    if key not in cache:
+        cache[key] = Nanobot.from_config(workspace=workspace)
+    return cache[key]
+
+
+def _web_chat_lock(app: FastAPI, key: str) -> asyncio.Lock:
+    locks = getattr(app.state, "web_chat_locks", None)
+    if locks is None:
+        app.state.web_chat_locks = {}
+        locks = app.state.web_chat_locks
+    if key not in locks:
+        locks[key] = asyncio.Lock()
+    return locks[key]
 
 
 def _resolve_workspace() -> Path:
@@ -458,11 +491,19 @@ def create_app() -> FastAPI:
         setup = health.validate_setup_token(setup_token)
         if not setup:
             raise HTTPException(status_code=404, detail="Setup session not found or expired.")
+        display_name = ""
+        try:
+            record = await app.state.registry.get_by_setup_token(setup_token)
+            if record:
+                display_name = (record.name or "").strip()
+        except Exception:
+            display_name = ""
         return templates.TemplateResponse(
             request,
             "setup.html",
             {
                 "setup_token": setup_token,
+                "display_name": display_name,
                 "setup": setup,
                 "channel_links": app.state.channel_links,
                 "provider_choices": PROVIDER_CHOICES,
@@ -752,7 +793,7 @@ def create_app() -> FastAPI:
             {
                 "invite": invite,
                 "invite_meta": invite_meta,
-                "workspace": str(workspace),
+                "workspace": str(workspace_root),
                 "channel_links": app.state.channel_links,
             },
         )
@@ -778,6 +819,121 @@ def create_app() -> FastAPI:
                 "preferredChannel": profile["preferred_channel"],
                 "channelLinks": app.state.channel_links,
             }
+        )
+
+    @app.get("/chat/{token}", response_class=HTMLResponse)
+    async def chat_page(request: Request, token: str) -> HTMLResponse:
+        if resolve_health_chat_workspace(token=token, workspace_root=app.state.workspace_root) is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Companion workspace not found. Finish setup, use your chat link after activation, or open Telegram.",
+            )
+        return templates.TemplateResponse(
+            request,
+            "chat.html",
+            {"chat_token": token},
+        )
+
+    @app.get("/api/chat/{token}/companion-status")
+    async def chat_companion_status(token: str) -> JSONResponse:
+        ws = resolve_health_chat_workspace(token=token, workspace_root=app.state.workspace_root)
+        if ws is None:
+            raise HTTPException(status_code=404, detail="Unknown chat token.")
+        memory_md = ws / "memory" / "MEMORY.md"
+        stage = parse_lifecycle_stage(memory_md)
+        topics: list[str] = []
+        try:
+            raw = memory_md.read_text(encoding="utf-8")
+            for label, needle in (
+                ("Symptom trends", "## Symptom Trends"),
+                ("Adherence patterns", "## Adherence Patterns"),
+                ("Goals and supports", "## Goals And Supports"),
+            ):
+                idx = raw.find(needle)
+                if idx == -1:
+                    continue
+                chunk = raw[idx : idx + 280]
+                if "No durable" not in chunk and "not recorded yet" not in chunk:
+                    topics.append(label)
+        except OSError:
+            pass
+        hour = datetime.now(UTC).hour
+        companion_state = "sleepy" if hour < 5 or hour >= 23 else "idle"
+        return JSONResponse(
+            {
+                "stage": stage,
+                "knowledgeScore": rough_knowledge_score(memory_md),
+                "topicsLearned": topics[:8],
+                "companionState": companion_state,
+            }
+        )
+
+    @app.post("/api/chat/{token}/message")
+    async def chat_message_stream(token: str, body: WebChatMessage) -> StreamingResponse:
+        ws = resolve_health_chat_workspace(token=token, workspace_root=app.state.workspace_root)
+        if ws is None:
+            raise HTTPException(status_code=404, detail="Unknown chat token.")
+
+        lock = _web_chat_lock(app, str(ws.resolve()))
+        session_key = f"health_web:{token}"
+
+        async def stream_with_lock():
+            async with lock:
+                q: asyncio.Queue = asyncio.Queue()
+                final_holder: dict[str, str] = {"text": ""}
+
+                async def on_stream(delta: str) -> None:
+                    await q.put(("delta", delta))
+
+                async def on_stream_end(*, resuming: bool = False) -> None:
+                    await q.put(("end", resuming))
+
+                async def run_turn() -> None:
+                    try:
+                        bot = _web_chat_nanobot(app, ws)
+                        resp = await bot._loop.process_direct(
+                            body.message,
+                            session_key=session_key,
+                            channel="web",
+                            chat_id=token,
+                            on_stream=on_stream,
+                            on_stream_end=on_stream_end,
+                        )
+                        final_holder["text"] = (getattr(resp, "content", None) or "") if resp else ""
+                        await q.put(("done", None))
+                    except Exception as exc:
+                        await q.put(("error", str(exc)))
+
+                task = asyncio.create_task(run_turn())
+                try:
+                    while True:
+                        kind, data = await asyncio.wait_for(q.get(), timeout=300.0)
+                        if kind == "delta":
+                            yield f"data: {json.dumps({'type': 'token', 'text': data})}\n\n"
+                        elif kind == "end":
+                            continue
+                        elif kind == "done":
+                            yield f"data: {json.dumps({'type': 'complete', 'text': final_holder['text']})}\n\n"
+                            break
+                        elif kind == "error":
+                            yield f"data: {json.dumps({'type': 'error', 'message': data})}\n\n"
+                            break
+                finally:
+                    if not task.done():
+                        task.cancel()
+                        try:
+                            await task
+                        except Exception:
+                            pass
+
+        return StreamingResponse(
+            stream_with_lock(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     return app

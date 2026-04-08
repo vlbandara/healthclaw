@@ -1,59 +1,369 @@
-/* Landing is intentionally layered on top of onboard.css */
+@import url("./tokens.css");
 
-.landing-card {
-  padding: 28px;
+.landing-body {
+  margin: 0;
+  font-family: var(--nh-font-sans);
+  background:
+    radial-gradient(circle at 15% 20%, var(--nh-color-glow), transparent 40%),
+    linear-gradient(180deg, var(--nh-color-bg-top) 0%, var(--nh-color-bg-bottom) 100%);
+  color: var(--nh-color-ink);
 }
 
-.landing-hero h1 {
-  margin: 6px 0 10px;
-  line-height: 1.05;
+.landing-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: var(--nh-space-md) var(--nh-space-lg);
+  display: flex;
+  align-items: center;
+  background: linear-gradient(180deg, rgba(247, 243, 234, 0.95), transparent);
+  pointer-events: none;
+}
+
+.landing-nav__brand {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: var(--nh-text-eyebrow);
+  color: var(--nh-color-warm);
+  font-weight: 600;
+}
+
+/* Hero */
+.story-hero {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  position: relative;
+  padding: 80px var(--nh-space-md) var(--nh-space-lg);
+  text-align: center;
+}
+
+.story-hero__glow {
+  position: absolute;
+  inset: 10% 20%;
+  background: radial-gradient(circle, rgba(31, 107, 73, 0.12), transparent 70%);
+  pointer-events: none;
+  animation: hero-glow-pulse 6s ease-in-out infinite;
+}
+
+@keyframes hero-glow-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+.story-hero__inner {
+  position: relative;
+  max-width: 560px;
+  z-index: 1;
+}
+
+.story-hero__orb {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 180px;
+  height: 180px;
+  margin-left: -90px;
+  margin-top: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 253, 248, 0.9), rgba(200, 230, 212, 0.5));
+  box-shadow:
+    0 0 60px rgba(31, 107, 73, 0.25),
+    inset 0 0 40px rgba(255, 255, 255, 0.5);
+  animation: orb-pulse 4s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes orb-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.95; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+
+.story-hero__companion {
+  position: relative;
+  z-index: 2;
+  margin: 0 auto var(--nh-space-md);
+  filter: drop-shadow(0 12px 28px rgba(32, 48, 40, 0.15));
+}
+
+.story-hero .eyebrow {
+  margin: 0 0 var(--nh-space-sm);
+}
+
+.story-hero__title {
+  font-size: clamp(2rem, 5vw, 2.85rem);
+  line-height:1.08;
   letter-spacing: -0.02em;
+  margin: 0 0 var(--nh-space-md);
+  font-weight: 700;
 }
 
-.landing-grid {
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 16px;
-  margin-top: 18px;
+.story-hero__accent {
+  color: var(--nh-color-accent);
 }
 
-.landing-panel {
+.story-hero__sub {
+  color: var(--nh-color-muted);
+  font-size: var(--nh-text-lede);
+  line-height: 1.5;
+  margin: 0 0 var(--nh-space-lg);
+}
+
+.story-scroll-hint {
+  display: inline-block;
+  color: var(--nh-color-accent);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 2px solid rgba(31, 107, 73, 0.35);
+  padding-bottom: 2px;
+}
+
+.story-scroll-hint:hover {
+  border-color: var(--nh-color-accent);
+}
+
+/* Story panels */
+.story-panel {
+  min-height: 85vh;
   display: grid;
-  gap: 12px;
-  padding: 18px;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--nh-space-lg);
+  align-items: center;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: var(--nh-space-lg) var(--nh-space-md);
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+}
+
+.story-panel.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.story-panel--alt {
+  direction: rtl;
+}
+
+.story-panel--alt > * {
+  direction: ltr;
+}
+
+.story-panel--night {
+  background: linear-gradient(160deg, #243038 0%, #1a2430 100%);
+  color: #e8eef0;
+  max-width: none;
+  border-radius: var(--nh-radius-card);
+  margin: var(--nh-space-md);
+  padding: var(--nh-space-lg) max(var(--nh-space-md), calc((100% - 1000px) / 2));
+}
+
+.story-panel--night .story-panel__copy h2,
+.story-panel--night .story-panel__copy p {
+  color: inherit;
+}
+
+.story-panel--night .story-panel__copy p {
+  color: var(--nh-color-night-muted);
+}
+
+.story-panel__copy h2 {
+  margin: 0 0 var(--nh-space-sm);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
+.story-panel__copy p {
+  margin: 0;
+  color: var(--nh-color-muted);
+  line-height: 1.55;
+  font-size: 1.05rem;
+}
+
+.story-panel__visual {
+  position: relative;
+  min-height: 200px;
+  display: grid;
+  place-items: center;
+}
+
+.story-panel__orb--small {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fffdf8, rgba(126, 184, 154, 0.6));
+  opacity: 0.7;
+  right: 10%;
+  bottom: 10%;
+  animation: orb-pulse 5s ease-in-out infinite;
+}
+
+.mock-notification {
+  display: flex;
+  gap: var(--nh-space-sm);
+  align-items: flex-start;
+  padding: var(--nh-space-md);
+  background: var(--nh-color-card);
+  border-radius: var(--nh-radius-input);
+  box-shadow: var(--nh-shadow-card);
+  border: 1px solid rgba(31, 107, 73, 0.15);
+  max-width: 320px;
+  transform: translateX(-8px);
+  transition: transform 0.5s ease;
+}
+
+.story-panel.is-visible .mock-notification {
+  transform: translateX(0);
+}
+
+.mock-notification__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--nh-color-accent);
+  margin-top: 6px;
+  flex-shrink: 0;
+  animation: dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.mock-notification__body {
+  display: grid;
+  gap: 4px;
+  font-size: 0.95rem;
+}
+
+.mock-notification__body strong {
+  color: var(--nh-color-ink);
+}
+
+.mock-notification__body span {
+  color: var(--nh-color-muted);
+  font-size: 0.88rem;
+}
+
+.mock-chat {
+  display: grid;
+  gap: var(--nh-space-sm);
+  width: 100%;
+  max-width: 300px;
+}
+
+.mock-chat--night .mock-chat__bubble--them {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e8eef0;
+}
+
+.mock-chat__bubble {
+  padding: var(--nh-space-sm) var(--nh-space-md);
   border-radius: 18px;
-  background: rgba(31, 107, 73, 0.06);
-  border: 1px solid rgba(31, 107, 73, 0.12);
+  font-size: 0.95rem;
+  line-height: 1.4;
 }
 
-.landing-panel h2 {
-  margin: 0;
+.mock-chat__bubble--them {
+  background: var(--nh-color-accent-soft);
+  border: 1px solid rgba(31, 107, 73, 0.2);
+  justify-self: start;
 }
 
-.how-list {
-  margin: 0;
-  padding-left: 18px;
-  color: #52655a;
+.mock-chat__bubble--you {
+  background: #fff;
+  border: 1px solid rgba(32, 48, 40, 0.1);
+  justify-self: end;
 }
 
-.how-list li + li {
-  margin-top: 8px;
+.growth-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
 }
 
-.signup {
-  display: grid;
-  gap: 12px;
+.growth-stack__layer {
+  display: block;
+  height: 12px;
+  border-radius: var(--nh-radius-pill);
+  background: linear-gradient(90deg, rgba(31, 107, 73, 0.25), rgba(31, 107, 73, 0.55));
+  animation: grow-layer 0.8s ease forwards;
+  opacity: 0;
 }
 
-.fineprint {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #52655a;
+.story-panel.is-visible .growth-stack__layer:nth-child(1) {
+  width: 120px;
+  animation-delay: 0.1s;
 }
 
-@media (max-width: 720px) {
-  .landing-grid {
-    grid-template-columns: 1fr;
+.story-panel.is-visible .growth-stack__layer:nth-child(2) {
+  width: 180px;
+  animation-delay: 0.25s;
+}
+
+.story-panel.is-visible .growth-stack__layer:nth-child(3) {
+  width: 240px;
+  animation-delay: 0.4s;
+}
+
+@keyframes grow-layer {
+  from {
+    opacity: 0;
+    transform: scaleX(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
   }
 }
 
+.landing-cta {
+  padding: var(--nh-space-lg) 0 48px;
+}
+
+.shell--cta {
+  min-height: auto;
+  padding: var(--nh-space-md);
+}
+
+.landing-cta-card {
+  width: min(var(--nh-max-read), 100%);
+  margin: 0 auto;
+}
+
+.landing-cta-card h2 {
+  margin: 0 0 var(--nh-space-sm);
+}
+
+@media (max-width: 820px) {
+  .story-panel {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding-top: 48px;
+    padding-bottom: 48px;
+  }
+
+  .story-panel--alt {
+    direction: ltr;
+  }
+
+  .story-panel__visual {
+    order: -1;
+    min-height: 160px;
+  }
+
+  .story-hero__orb {
+    width: 140px;
+    height: 140px;
+    margin-left: -70px;
+  }
+}

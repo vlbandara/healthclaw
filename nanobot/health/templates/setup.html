@@ -3,33 +3,52 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>NanoHealth Setup</title>
+    <title>Wake your companion — BiomeClaw</title>
+    <link rel="stylesheet" href="/static/tokens.css" />
     <link rel="stylesheet" href="/static/onboard.css" />
+    <link rel="stylesheet" href="/static/companion.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="card">
-        <header>
-          <p class="eyebrow">nanohealth</p>
-          <h1>Set up your coach</h1>
-          <p class="lede">A few short steps. Tell us who you are, connect Telegram, and you’re ready.</p>
+    {% from "_companion.html" import companion %}
+    <div id="spawn-overlay" class="spawn-overlay" aria-hidden="false">
+      <div class="spawn-overlay__inner">
+        <div class="spawn-overlay__companion">{{ companion('thinking', 'companion-wrap--lg') }}</div>
+        <p class="spawn-overlay__title">Spawning your companion…</p>
+        <p class="spawn-overlay__line" id="spawn-line">Allocating a little corner of the cloud.</p>
+        <div class="spawn-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Boot progress">
+          <div class="spawn-progress__bar" id="spawn-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <main class="shell shell--story">
+      <section class="card setup-card">
+        <header class="setup-header">
+          <p class="eyebrow">connect your space</p>
+          <h1>Give your companion a place to reach you.</h1>
+          <p class="lede" id="setup-lede">
+            {% if display_name %}
+              {{ display_name }}, this is the last stretch: connect Telegram, pick a starting tone, and you’re in.
+            {% else %}
+              One short flow: connect Telegram, choose the vibe, then turn it on.
+            {% endif %}
+          </p>
         </header>
 
         <form
           id="setup-form"
           data-setup-token="{{ setup_token }}"
+          data-display-name="{{ display_name|e }}"
           data-telegram-url="{{ channel_links.telegram or '' }}"
           data-whatsapp-url="{{ channel_links.whatsapp or '' }}"
         >
           <section class="step active" data-step="1">
-            <h2>Connect Telegram</h2>
-            <p class="step-copy">We’ll create your Telegram bot in BotFather, then paste the token here.</p>
+            <h2 class="step-heading">Connect Telegram</h2>
+            <p class="step-copy">Paste your BotFather token and we’ll connect the chat where your companion will show up.</p>
             <div class="channel-grid">
               <section class="channel-card">
-                <h3>Telegram bot</h3>
-                <p class="helper">
-                  New to this? Follow the mini guide below — it’s the same flow everyone uses.
-                </p>
+                <h3>Telegram bot connection</h3>
+                <p class="helper">This is the chat identity your companion will use.</p>
 
                 <details class="coach-guide" open>
                   <summary class="coach-guide__summary">BotFather guide (2 minutes)</summary>
@@ -40,13 +59,12 @@
                       <button type="button" class="coach-guide__button" id="open-botfather">Open BotFather</button>
                     </li>
                     <li>Tap <strong>Start</strong>, then send <code>/newbot</code>.</li>
-                    <li>Pick a name for your coach (anything you like).</li>
-                    <li>Pick a username ending in <code>bot</code> (example: <code>mycoach_bot</code>).</li>
-                    <li>BotFather will send a token like <code>123456:ABC-DEF...</code>. Copy it.</li>
+                    <li>Pick a name for your companion.</li>
+                    <li>Pick a username ending in <code>bot</code>.</li>
+                    <li>Paste the token here so we can wake it up for you.</li>
                   </ol>
                   <p class="coach-guide__fineprint helper">
-                    <strong>What’s a bot token?</strong> It’s a secret password that lets your coach bot run.
-                    Don’t share it publicly. If it leaks, you can regenerate it in BotFather with <code>/token</code>.
+                    The token is secret. If it ever leaks, regenerate it in BotFather with <code>/token</code>.
                   </p>
                 </details>
 
@@ -54,38 +72,76 @@
                 <button type="button" id="connect-telegram">Connect Telegram</button>
                 <p id="telegram-summary" class="helper"></p>
               </section>
+
+              <section class="setup-promise">
+                <h3>What happens next?</h3>
+                <p>Once Telegram is connected, your companion has somewhere to check in, send reminders, and keep the tone you choose below.</p>
+              </section>
             </div>
           </section>
 
           <section class="step" data-step="2">
-            <h2>Optional (30 seconds)</h2>
-            <p class="step-copy">This just tunes the vibe. You can skip and do it in chat later.</p>
+            <h2 class="step-heading">Pick the starting vibe</h2>
+            <p class="step-copy">Just the starting point. It can adapt as it learns what actually helps.</p>
             <input type="hidden" name="preferred_channel" value="telegram" />
-            <label>What do you want help with? <textarea name="goals" placeholder="Gym consistency&#10;Sleep schedule&#10;Cut sugar"></textarea></label>
-            <label><input name="morning_check_in" type="checkbox" checked /> Morning check-ins</label>
-            <label><input name="weekly_summary" type="checkbox" checked /> Weekly summary</label>
+            <div class="tap-grid tap-grid--vibe">
+              <label class="tap-card tap-card--vibe">
+                <input type="radio" name="tone_style" value="gentle" checked />
+                <span>Gentle</span>
+              </label>
+              <label class="tap-card tap-card--vibe">
+                <input type="radio" name="tone_style" value="direct" />
+                <span>Direct</span>
+              </label>
+              <label class="tap-card tap-card--vibe">
+                <input type="radio" name="tone_style" value="calm" />
+                <span>Calm</span>
+              </label>
+            </div>
+            <div class="tap-toggles">
+              <label class="toggle-row">
+                <input name="morning_check_in" type="checkbox" checked />
+                <span>
+                  <strong>Morning check-ins</strong>
+                  <small>Help shape the day early.</small>
+                </span>
+              </label>
+              <label class="toggle-row">
+                <input name="weekly_summary" type="checkbox" checked />
+                <span>
+                  <strong>Weekly summary</strong>
+                  <small>Notice patterns, streaks, and changes.</small>
+                </span>
+              </label>
+            </div>
           </section>
 
           <section class="step" data-step="3">
-            <h2>Finish</h2>
-            <p class="step-copy">We’ll switch everything on and send you back to chat.</p>
+            <h2 class="step-heading">Turn it on</h2>
+            <p class="step-copy">We’ll switch everything on and send you straight into chat.</p>
             <div class="summary-card">
-              <p id="finish-summary" class="helper">You can activate once your AI key is checked, at least one chat app is connected, and your profile is saved.</p>
+              <p id="finish-summary" class="helper">Connect Telegram first, then continue.</p>
             </div>
           </section>
 
           <footer class="actions">
             <button type="button" id="back" class="secondary">Back</button>
             <button type="button" id="next">Continue</button>
-            <button type="button" id="activate">Turn on my assistant</button>
+            <button type="button" id="activate">Wake my companion</button>
           </footer>
         </form>
 
         <p id="status" class="status"></p>
-        <section id="completion" class="completion" hidden>
-          <h2>You’re all set</h2>
-          <p>Your assistant is ready. Go back to chat and send a message.</p>
+
+        <section id="completion" class="completion completion--alive" hidden>
+          <div class="completion__companion">{{ companion('happy', 'companion-wrap--sm') }}</div>
+          <h2>I’m here.</h2>
+          <p id="completion-greeting" class="completion__greeting"></p>
+          <p class="completion__hint">Open the chat and say hi. The first version of your companion is already awake.</p>
           <div id="completion-actions" class="handoff-actions"></div>
+          <p class="completion__chat-link-wrap">
+            <a id="web-chat-link" class="channel-link secondary-link" href="#" hidden>Chat in the browser</a>
+          </p>
         </section>
       </section>
     </main>

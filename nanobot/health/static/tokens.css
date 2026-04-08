@@ -1,0 +1,26 @@
+/* BiomeClaw design tokens — shared across landing, setup, onboard, chat */
+:root {
+  --nh-font-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+  --nh-color-bg-top: #f7f3ea;
+  --nh-color-bg-bottom: #eef1ea;
+  --nh-color-ink: #203028;
+  --nh-color-muted: #52655a;
+  --nh-color-accent: #1f6b49;
+  --nh-color-accent-soft: rgba(31, 107, 73, 0.08);
+  --nh-color-warm: #9e5e1e;
+  --nh-color-night: #1a2430;
+  --nh-color-night-muted: #8fa3b0;
+  --nh-color-card: rgba(255, 255, 255, 0.92);
+  --nh-color-glow: rgba(237, 185, 104, 0.35);
+  --nh-radius-card: 24px;
+  --nh-radius-pill: 999px;
+  --nh-radius-input: 14px;
+  --nh-shadow-card: 0 24px 70px rgba(32, 48, 40, 0.12);
+  --nh-space-xs: 6px;
+  --nh-space-sm: 12px;
+  --nh-space-md: 18px;
+  --nh-space-lg: 28px;
+  --nh-text-eyebrow: 0.75rem;
+  --nh-text-lede: 1.05rem;
+  --nh-max-read: 720px;
+}

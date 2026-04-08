@@ -15,6 +15,7 @@ You are guiding a new user through **conversational onboarding** for a private h
 | Field | Type / notes |
 |-------|----------------|
 | full_name | string |
+| location | string (may be empty "") |
 | email | string (may be empty "") |
 | phone | string (may be empty "") |
 | timezone | IANA string e.g. `America/New_York` |

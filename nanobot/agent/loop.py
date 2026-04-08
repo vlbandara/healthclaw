@@ -419,6 +419,25 @@ class AgentLoop:
             return None
         return {"Preferred Name": preferred_name}
 
+    def _health_lifecycle_overlay(self) -> str | None:
+        if not is_health_workspace(self.workspace):
+            return None
+        memory_md = self.workspace / "memory" / "MEMORY.md"
+        try:
+            from nanobot.health.chat_workspace import parse_lifecycle_stage
+
+            stage = parse_lifecycle_stage(memory_md)
+        except Exception:
+            stage = "early"
+        try:
+            return render_template(
+                "health/lifecycle_system.md",
+                stage=stage,
+                strip=True,
+            )
+        except Exception:
+            return None
+
     def _build_health_system_prompt(self, session: Session) -> str | None:
         if not is_health_workspace(self.workspace) or not self._is_health_cold_start(session):
             return None
@@ -742,6 +761,12 @@ class AgentLoop:
             )
             runtime_context_extra = self._health_runtime_context_extra()
             system_prompt = onboarding_prompt or self._build_health_system_prompt(session)
+            if system_prompt is None:
+                system_prompt = self.context.build_system_prompt()
+            if is_health_workspace(self.workspace) and not onboarding_prompt:
+                life = self._health_lifecycle_overlay()
+                if life:
+                    system_prompt = f"{system_prompt}\n\n---\n\n{life}"
             initial_messages = self.context.build_messages(
                 history=history,
                 current_message=msg.content,

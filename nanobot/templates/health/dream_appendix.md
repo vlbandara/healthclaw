@@ -7,3 +7,4 @@ When this workspace is health-enabled:
 - Put evolving longitudinal patterns, repeated concerns, and observations worth revisiting in `memory/MEMORY.md`.
 - Preserve uncertainty. Only record patterns clearly supported by history.
 - Do not move raw identifiers into `USER.md` or `memory/MEMORY.md`; those remain only in the encrypted vault.
+- Maintain the **## Lifecycle** section in `memory/MEMORY.md`: keep `Stage`, `Days active`, `Total interactions`, `Streak`, `Last mood trend`, and `Trust level` reasonably current. Advance **Stage** only when sustained conversation depth and time support it (`onboarding` → `early` → `settling` → `established` → `deep`).

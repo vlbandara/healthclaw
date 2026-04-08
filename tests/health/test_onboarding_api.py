@@ -18,6 +18,7 @@ def _payload(full_name: str = "Jane Doe") -> dict:
     return {
         "phase1": {
             "full_name": full_name,
+            "location": "Colombo, Sri Lanka",
             "email": "jane@example.com",
             "phone": "+15550001111",
             "timezone": "Asia/Colombo",
@@ -52,6 +53,45 @@ def _payload(full_name: str = "Jane Doe") -> dict:
     }
 
 
+def _minimal_payload(full_name: str = "Jane Doe") -> dict:
+    return {
+        "phase1": {
+            "full_name": full_name,
+            "location": "Colombo, Sri Lanka",
+            "email": "",
+            "phone": "",
+            "timezone": "Asia/Colombo",
+            "language": "en",
+            "preferred_channel": "telegram",
+            "age_range": "not set",
+            "sex": "unknown",
+            "gender": "not set",
+            "height_cm": None,
+            "weight_kg": None,
+            "known_conditions": [],
+            "medications": [],
+            "allergies": [],
+            "wake_time": "07:00",
+            "sleep_time": "22:30",
+            "consents": ["privacy", "emergency", "coaching"],
+        },
+        "phase2": {
+            "mood_interest": 0,
+            "mood_down": 0,
+            "activity_level": "not set",
+            "nutrition_quality": "not set",
+            "sleep_quality": "not set",
+            "stress_level": "not set",
+            "goals": ["Protect sleep and recovery"],
+            "current_concerns": "Evenings are when I drift.",
+            "reminder_preferences": ["Warm, gentle nudges"],
+            "medication_reminder_windows": [],
+            "morning_check_in": True,
+            "weekly_summary": True,
+        },
+    }
+
+
 def _make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, HealthWorkspace]:
     monkeypatch.setenv("NANOBOT_WORKSPACE", str(tmp_path))
     monkeypatch.setenv("HEALTH_VAULT_KEY", "test-health-vault-key")
@@ -68,17 +108,19 @@ def test_onboard_get_and_submit_flow(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
     page = client.get(f"/onboard/{invite}")
     assert page.status_code == 200
-    assert "Let’s get you set up" in page.text
+    assert "Let’s make this feel like your space." in page.text
     assert "Back to Telegram" in page.text
 
-    resp = client.post(f"/api/onboard/{invite}/submit", json=_payload())
+    resp = client.post(f"/api/onboard/{invite}/submit", json=_minimal_payload())
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
     assert resp.json()["channelLinks"]["telegram"] == "https://t.me/example_bot"
 
     profile = json.loads((tmp_path / "health" / "profile.json").read_text(encoding="utf-8"))
     assert profile["preferred_channel"] == "telegram"
-    assert profile["demographics"]["known_conditions"] == ["asthma"]
+    assert profile["location"] == "Colombo, Sri Lanka"
+    assert profile["goals"] == ["Protect sleep and recovery"]
+    assert profile["demographics"]["known_conditions"] == []
     vault_ciphertext = (tmp_path / "health" / "vault.json.enc").read_text(encoding="utf-8")
     assert "Jane Doe" not in vault_ciphertext
 
@@ -112,3 +154,18 @@ def test_onboard_regeneration_is_idempotent(tmp_path: Path, monkeypatch: pytest.
     profile = json.loads((tmp_path / "health" / "profile.json").read_text(encoding="utf-8"))
     assert profile["user_token"] == "USER-001"
     assert profile["goals"] == ["improve sleep", "walk daily"]
+
+
+def test_onboard_accepts_reduced_story_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, health = _make_client(tmp_path, monkeypatch)
+    invite, _ = health.create_invite(channel="telegram", chat_id="123")
+
+    resp = client.post(f"/api/onboard/{invite}/submit", json=_minimal_payload("Sam Rivera"))
+
+    assert resp.status_code == 200
+    profile = json.loads((tmp_path / "health" / "profile.json").read_text(encoding="utf-8"))
+    assert profile["timezone"] == "Asia/Colombo"
+    assert profile["wellbeing"]["activity_level"] == "not set"
+    assert profile["preferences"]["reminder_preferences"] == ["Warm, gentle nudges"]
+    vault_ciphertext = (tmp_path / "health" / "vault.json.enc").read_text(encoding="utf-8")
+    assert "Sam Rivera" not in vault_ciphertext

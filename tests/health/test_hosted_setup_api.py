@@ -12,6 +12,7 @@ pytest.importorskip("starlette")
 from fastapi.testclient import TestClient
 
 from nanobot.health.api import create_app
+from nanobot.health.spawner import SpawnResult
 from nanobot.health.storage import HealthWorkspace
 
 
@@ -19,6 +20,7 @@ def _payload() -> dict:
     return {
         "phase1": {
             "full_name": "Jane Doe",
+            "location": "Colombo, Sri Lanka",
             "email": "jane@example.com",
             "phone": "+15550001111",
             "timezone": "Asia/Colombo",
@@ -58,14 +60,21 @@ def _make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestC
     monkeypatch.setenv("HEALTH_VAULT_KEY", "test-health-vault-key")
     monkeypatch.setenv("HEALTH_TELEGRAM_BOT_URL", "https://t.me/example_bot")
     monkeypatch.setenv("HEALTH_WHATSAPP_CHAT_URL", "https://wa.me/15550001111")
+    monkeypatch.setenv("NANOBOT_HEALTH_REGISTRY_PATH", str(tmp_path / "health-registry.sqlite3"))
     health = HealthWorkspace(tmp_path)
     app = create_app()
     return TestClient(app), health
 
 
+def _setup_session_health(tmp_path: Path, token: str) -> HealthWorkspace:
+    return HealthWorkspace(tmp_path / "health-staging" / token)
+
+
 def test_setup_page_and_provider_submission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    client, health = _make_client(tmp_path, monkeypatch)
-    token, _ = health.create_setup_session()
+    client, _ = _make_client(tmp_path, monkeypatch)
+    token = "setup-page-token"
+    health = _setup_session_health(tmp_path, token)
+    health.create_setup_session_with_token(token)
     monkeypatch.setattr(
         "nanobot.health.api.validate_provider_credentials",
         AsyncMock(return_value={"provider": "minimax", "label": "MiniMax", "model": "MiniMax-M2.7"}),
@@ -73,7 +82,7 @@ def test_setup_page_and_provider_submission(tmp_path: Path, monkeypatch: pytest.
 
     page = client.get(f"/setup/{token}")
     assert page.status_code == 200
-    assert "Set up your coach" in page.text
+    assert "Give your companion a place to reach you." in page.text
 
     resp = client.post(
         f"/api/setup/{token}/provider",
@@ -83,13 +92,15 @@ def test_setup_page_and_provider_submission(tmp_path: Path, monkeypatch: pytest.
     setup = health.load_setup()
     assert setup["provider"]["validated_at"]
     assert setup["provider"]["provider"] == "minimax"
-    ciphertext = (tmp_path / "health" / "setup-secrets.json.enc").read_text(encoding="utf-8")
+    ciphertext = health.setup_secrets_path.read_text(encoding="utf-8")
     assert "minimax-secret-key" not in ciphertext
 
 
 def test_setup_activate_with_telegram(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    client, health = _make_client(tmp_path, monkeypatch)
-    token, _ = health.create_setup_session()
+    client, _ = _make_client(tmp_path, monkeypatch)
+    token = "setup-telegram-token"
+    health = _setup_session_health(tmp_path, token)
+    health.create_setup_session_with_token(token)
     monkeypatch.setattr(
         "nanobot.health.api.validate_provider_credentials",
         AsyncMock(return_value={"provider": "minimax", "label": "MiniMax", "model": "MiniMax-M2.7"}),
@@ -107,6 +118,17 @@ def test_setup_activate_with_telegram(tmp_path: Path, monkeypatch: pytest.Monkey
     )
     register = AsyncMock()
     monkeypatch.setattr("nanobot.health.api.register_telegram_commands", register)
+    monkeypatch.setattr(client.app.state.registry, "get_by_setup_token", AsyncMock(return_value=None))
+    monkeypatch.setattr(client.app.state.registry, "set_container", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        client.app.state.spawner,
+        "spawn_instance",
+        lambda **_kwargs: SpawnResult(
+            container_id="ctr-test-123",
+            volume_name="vol-test-123",
+            workspace_path=str(tmp_path / "spawned-instance"),
+        ),
+    )
 
     assert client.post(
         f"/api/setup/{token}/provider",
@@ -124,6 +146,7 @@ def test_setup_activate_with_telegram(tmp_path: Path, monkeypatch: pytest.Monkey
     assert resp.json()["channelLinks"]["telegram"] == "https://t.me/healthbot_test"
     profile = json.loads((tmp_path / "health" / "profile.json").read_text(encoding="utf-8"))
     assert profile["preferred_channel"] == "telegram"
+    assert profile["location"] == "Colombo, Sri Lanka"
     assert health.load_setup()["state"] == "active"
     register.assert_awaited_once()
 
@@ -132,8 +155,10 @@ def test_setup_rejects_activation_without_connected_channel(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client, health = _make_client(tmp_path, monkeypatch)
-    token, _ = health.create_setup_session()
+    client, _ = _make_client(tmp_path, monkeypatch)
+    token = "setup-no-channel-token"
+    health = _setup_session_health(tmp_path, token)
+    health.create_setup_session_with_token(token)
     monkeypatch.setattr(
         "nanobot.health.api.validate_provider_credentials",
         AsyncMock(return_value={"provider": "minimax", "label": "MiniMax", "model": "MiniMax-M2.7"}),
@@ -151,8 +176,10 @@ def test_setup_rejects_activation_without_connected_channel(
 
 
 def test_setup_whatsapp_status_uses_bridge_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    client, health = _make_client(tmp_path, monkeypatch)
-    token, _ = health.create_setup_session()
+    client, _ = _make_client(tmp_path, monkeypatch)
+    token = "setup-whatsapp-token"
+    health = _setup_session_health(tmp_path, token)
+    health.create_setup_session_with_token(token)
     client.app.state.whatsapp_monitor._snapshot.update(
         {
             "status": "connected",
@@ -171,8 +198,10 @@ def test_setup_whatsapp_status_uses_bridge_snapshot(tmp_path: Path, monkeypatch:
 
 
 def test_setup_allows_openrouter_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    client, health = _make_client(tmp_path, monkeypatch)
-    token, _ = health.create_setup_session()
+    client, _ = _make_client(tmp_path, monkeypatch)
+    token = "setup-openrouter-token"
+    health = _setup_session_health(tmp_path, token)
+    health.create_setup_session_with_token(token)
     monkeypatch.setattr(
         "nanobot.health.api.validate_provider_credentials",
         AsyncMock(

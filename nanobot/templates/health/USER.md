@@ -5,6 +5,7 @@ This workspace is health-enabled. Raw identifiers live only in the encrypted vau
 ## Identity
 
 - User token: `{{ user_token }}`
+- Location: `{{ location }}`
 - Timezone: `{{ timezone }}`
 - Language: `{{ language }}`
 - Preferred channel: `{{ preferred_channel }}`

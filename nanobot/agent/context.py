@@ -55,7 +55,7 @@ class ContextBuilder:
         system = platform.system()
         runtime = f"{'macOS' if system == 'Darwin' else system} {platform.machine()}, Python {platform.python_version()}"
         assistant_identity = (
-            "NanoHealth, a sharp health coach with a real personality."
+            "BiomeClaw, a sharp health coach with a real personality."
             if is_health_workspace(self.workspace)
             else "nanobot, a helpful AI assistant."
         )

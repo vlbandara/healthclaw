@@ -6,13 +6,59 @@ const activateButton = document.getElementById("activate");
 const statusNode = document.getElementById("status");
 const completionNode = document.getElementById("completion");
 const completionActions = document.getElementById("completion-actions");
+const completionGreeting = document.getElementById("completion-greeting");
+const webChatLink = document.getElementById("web-chat-link");
+const spawnOverlay = document.getElementById("spawn-overlay");
+const spawnLine = document.getElementById("spawn-line");
+const spawnBar = document.getElementById("spawn-bar");
 const telegramSummary = document.getElementById("telegram-summary");
 const finishSummary = document.getElementById("finish-summary");
 const connectTelegramButton = document.getElementById("connect-telegram");
 const openBotFatherButton = document.getElementById("open-botfather");
 
+const TONE_PREFERENCES = {
+  gentle: "Warm, gentle nudges",
+  direct: "Direct, motivating pushes",
+  calm: "Calm grounding support",
+};
+
 let currentStep = 0;
 let setupState = null;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runSpawnSequence() {
+  if (!spawnOverlay || !spawnLine || !spawnBar) {
+    return;
+  }
+  const lines = [
+    "Setting up your private space.",
+    "Saving your name and local timing…",
+    "Almost there. Getting your companion ready…",
+  ];
+  let pct = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    spawnLine.textContent = lines[i];
+    const target = Math.round(((i + 1) / lines.length) * 92);
+    while (pct < target) {
+      pct += 3;
+      spawnBar.style.width = `${Math.min(pct, target)}%`;
+      await sleep(40);
+    }
+    await sleep(320);
+  }
+  spawnBar.style.width = "100%";
+  spawnLine.textContent = "Ready when you are.";
+  await sleep(500);
+  const companion = spawnOverlay.querySelector(".companion-wrap");
+  if (companion) {
+    companion.setAttribute("data-state", "idle");
+  }
+  spawnOverlay.classList.add("is-done");
+  spawnOverlay.setAttribute("aria-hidden", "true");
+}
 
 function parseLines(value) {
   return (value || "")
@@ -89,9 +135,6 @@ function fillProfile(profile) {
   if (typeof phase2.weekly_summary === "boolean") {
     setFieldValue("weekly_summary", phase2.weekly_summary);
   }
-  if (Array.isArray(phase2.goals)) {
-    setFieldValue("goals", phase2.goals);
-  }
 }
 
 function renderCompletion(links) {
@@ -108,18 +151,36 @@ function renderCompletion(links) {
     anchor.textContent = name === "telegram" ? "Open Telegram" : "Open WhatsApp";
     completionActions.appendChild(anchor);
   });
+  const token = form?.dataset.setupToken || "";
+  const displayName = (form?.dataset.displayName || "").trim();
+  const tone = form.querySelector('input[name="tone_style"]:checked')?.value || "gentle";
+  const toneLabel = {
+    gentle: "warmly",
+    direct: "with a push",
+    calm: "with calm energy",
+  }[tone] || "warmly";
+  if (completionGreeting) {
+    const who = displayName || "there";
+    completionGreeting.textContent = `Hey ${who}. I’m awake and I’ll show up ${toneLabel}.`;
+  }
+  if (webChatLink && token) {
+    webChatLink.href = `/chat/${encodeURIComponent(token)}`;
+    webChatLink.hidden = false;
+  }
   form.hidden = true;
   completionNode.hidden = false;
 }
 
 function profilePayload() {
+  const tone = form.querySelector('input[name="tone_style"]:checked')?.value || "gentle";
   return {
     phase1: {
       // Server will fill sensible defaults if missing.
       preferred_channel: (field("preferred_channel")?.value || "telegram"),
     },
     phase2: {
-      goals: parseLines(field("goals")?.value || ""),
+      goals: [],
+      reminder_preferences: [TONE_PREFERENCES[tone] || TONE_PREFERENCES.gentle],
       morning_check_in: Boolean(field("morning_check_in")?.checked),
       weekly_summary: Boolean(field("weekly_summary")?.checked),
     },
@@ -159,9 +220,24 @@ async function refreshStatus() {
   }
 
   fillProfile(setupState.profile);
+  const reminderPreferences = (setupState.profile?.phase2 || {}).reminder_preferences || [];
+  if (Array.isArray(reminderPreferences) && reminderPreferences.length) {
+    const reminder = reminderPreferences[0];
+    const toneInput = {
+      [TONE_PREFERENCES.gentle]: "gentle",
+      [TONE_PREFERENCES.direct]: "direct",
+      [TONE_PREFERENCES.calm]: "calm",
+    }[reminder];
+    if (toneInput) {
+      const toneField = form.querySelector(`input[name="tone_style"][value="${toneInput}"]`);
+      if (toneField) {
+        toneField.checked = true;
+      }
+    }
+  }
   finishSummary.textContent = setupState.activationReady
-    ? "Everything looks ready. Turn on your coach when you’re ready."
-    : "You can activate once Telegram is connected.";
+    ? "Everything is lined up. Turn it on when you’re ready."
+    : "Connect Telegram first, then we can continue.";
 
   if (setupState.state === "active") {
     renderCompletion(setupState.channelLinks || {});
@@ -196,11 +272,11 @@ async function saveProfile() {
 
 async function activateSetup() {
   const token = form.dataset.setupToken;
-  setStatus("Spinning up your coach…");
+  setStatus("Starting your companion…");
   const data = await fetchJson(`/api/setup/${token}/activate`, {
     method: "POST",
   });
-  setStatus("Your assistant is ready.");
+  setStatus("Your companion is ready.");
   renderCompletion(data.channelLinks || {});
 }
 
@@ -259,4 +335,8 @@ activateButton.addEventListener("click", async () => {
 
 updateStep();
 refreshStatus().catch(() => {});
-
+runSpawnSequence().catch(() => {
+  if (spawnOverlay) {
+    spawnOverlay.classList.add("is-done");
+  }
+});

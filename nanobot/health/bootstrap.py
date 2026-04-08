@@ -78,6 +78,7 @@ def write_health_workspace_assets(workspace: Path, profile: dict[str, Any]) -> N
         workspace / "USER.md": render_template(
             "health/USER.md",
             user_token=profile.get("user_token", "USER-001"),
+            location=profile.get("location", "not set"),
             timezone=profile.get("timezone", "UTC"),
             language=profile.get("language", "en"),
             preferred_channel=profile.get("preferred_channel", "telegram"),
@@ -150,6 +151,7 @@ def build_profile_payload(submission: dict[str, Any], *, channel: str, user_toke
         "mode": "health",
         "user_token": user_token,
         "preferred_channel": phase1["preferred_channel"],
+        "location": phase1.get("location", "").strip(),
         "timezone": phase1["timezone"],
         "language": phase1["language"],
         "demographics": {
@@ -214,6 +216,7 @@ def build_vault_payload(
         "contact": {
             "full_name": full_name,
             "preferred_name": preferred_name,
+            "location": phase1.get("location", "").strip(),
             "email": phase1.get("email", "").strip(),
             "phone": phase1.get("phone", "").strip(),
             "invite_channel": invite.get("channel"),

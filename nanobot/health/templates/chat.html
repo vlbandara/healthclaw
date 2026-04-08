@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Your companion — BiomeClaw</title>
+    <link rel="stylesheet" href="/static/tokens.css" />
+    <link rel="stylesheet" href="/static/onboard.css" />
+    <link rel="stylesheet" href="/static/companion.css" />
+    <link rel="stylesheet" href="/static/chat.css" />
+  </head>
+  <body class="chat-body">
+    {% from "_companion.html" import companion %}
+    <div class="chat-app" id="chat-app" data-token="{{ chat_token }}">
+      <header class="chat-header">
+        <div class="chat-header__companion" id="chat-companion-slot">
+          {{ companion('idle', 'companion-wrap--sm') }}
+        </div>
+        <div class="chat-header__meta">
+          <h1 class="chat-header__title">Your companion</h1>
+          <p class="chat-header__stage" id="chat-stage-label">Getting to know you</p>
+        </div>
+        <button type="button" class="chat-insight-toggle" id="insight-toggle" aria-expanded="false" aria-controls="insight-panel">
+          How well I know you
+        </button>
+      </header>
+
+      <aside class="chat-insight" id="insight-panel" hidden>
+        <p class="chat-insight__score">Knowledge <strong id="insight-score">—</strong></p>
+        <p class="chat-insight__stage">Stage: <span id="insight-stage">—</span></p>
+        <p class="chat-insight__topics" id="insight-topics"></p>
+      </aside>
+
+      <main class="chat-thread" id="chat-thread" aria-live="polite"></main>
+
+      <div class="chat-typing" id="chat-typing" hidden>
+        <span class="chat-typing__dots" aria-hidden="true"></span>
+        <span class="visually-hidden">Companion is thinking</span>
+      </div>
+
+      <footer class="chat-composer">
+        <label class="visually-hidden" for="chat-input">Message</label>
+        <textarea id="chat-input" rows="1" placeholder="Say anything…" maxlength="32000"></textarea>
+        <button type="button" id="chat-send" class="chat-send">Send</button>
+      </footer>
+    </div>
+    <script src="/static/chat.js"></script>
+  </body>
+</html>

@@ -1,3 +1,5 @@
+name: biomeclaw
+
 x-common-config: &common-config
   build:
     context: .
@@ -19,7 +21,7 @@ x-common-config: &common-config
 services:
   redis:
     image: redis:7-alpine
-    container_name: nanobot-redis
+    container_name: biomeclaw-redis
     restart: unless-stopped
     logging:
       driver: json-file
@@ -29,7 +31,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: nanobot-postgres
+    container_name: biomeclaw-postgres
     environment:
       POSTGRES_DB: nanohealth
       POSTGRES_USER: nanohealth
@@ -45,7 +47,7 @@ services:
 
   orchestrator:
     <<: *common-config
-    container_name: nanohealth-orchestrator
+    container_name: biomeclaw-orchestrator
     depends_on:
       - postgres
       - redis
@@ -82,7 +84,7 @@ services:
 
   caddy:
     image: caddy:2.9-alpine
-    container_name: nanobot-caddy
+    container_name: biomeclaw-caddy
     depends_on:
       - orchestrator
     ports:
@@ -103,7 +105,7 @@ services:
 
   worker:
     <<: *common-config
-    container_name: nanohealth-worker
+    container_name: biomeclaw-worker
     depends_on:
       - postgres
       - redis

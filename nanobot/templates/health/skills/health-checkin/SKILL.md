@@ -50,6 +50,11 @@ Separate clearly:
 - Misses (without shame)
 - Pattern you noticed
 - One next-step suggestion
+- **What I learned this week**: one short, concrete paragraph — a new pattern about *them* (timing, tone that landed, a trigger, a win streak). Not generic praise.
+
+## Companion opener (notifications)
+
+Heartbeat may assign a **companion_mood** (`warm`, `playful`, `calm`, `focused`, `gentle_nudge`). Use it only to shape the **first line** of proactive outreach so pings feel alive and human, then deliver the check-in.
 
 ## Micro-challenges (daily, optional)
 

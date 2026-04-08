@@ -3,90 +3,108 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>NanoHealth</title>
+    <title>BiomeClaw — Your AI, always awake</title>
+    <link rel="stylesheet" href="/static/tokens.css" />
     <link rel="stylesheet" href="/static/onboard.css" />
+    <link rel="stylesheet" href="/static/companion.css" />
     <link rel="stylesheet" href="/static/landing.css" />
   </head>
-  <body>
-    <main class="shell">
-      <section class="card landing-card">
-        <header class="landing-hero">
-          <p class="eyebrow">nanohealth</p>
-          <h1>Your personal health coach. Always on.</h1>
-          <p class="lede">
-            A real-feeling, interesting coach that pushes you to train, keeps you honest about habits, and stays present at 2am.
-            Built on NanoBot, customized for you in minutes.
+  <body class="landing-body">
+    {% from "_companion.html" import companion %}
+    <header class="landing-nav">
+      <span class="landing-nav__brand">BiomeClaw</span>
+    </header>
+
+    <section class="story-hero">
+      <div class="story-hero__glow" aria-hidden="true"></div>
+      <div class="story-hero__inner">
+        <div class="story-hero__orb" aria-hidden="true"></div>
+        <div class="story-hero__companion">{{ companion('idle', 'companion-wrap--lg') }}</div>
+        <p class="eyebrow">private support that learns your rhythm</p>
+        <h1 class="story-hero__title">A companion that checks in like it knows you.<br /><span class="story-hero__accent">Calm, personal, and always around.</span></h1>
+        <p class="story-hero__sub">
+          Medication, movement, stress, sleep, or just daily rhythm. Start with a few quick choices and it will keep learning what actually helps.
+        </p>
+        <a class="story-scroll-hint" href="#story-meds">See how it shows up</a>
+      </div>
+    </section>
+
+    <section class="story-panel" id="story-meds" data-story="meds">
+      <div class="story-panel__visual">
+        <div class="mock-notification">
+          <span class="mock-notification__dot"></span>
+          <div class="mock-notification__body">
+            <strong>Hey, your meds are due.</strong>
+            <span>Water first. Dose next. I’ll check back in ten minutes if you miss it.</span>
+          </div>
+        </div>
+        <div class="story-panel__orb story-panel__orb--small" aria-hidden="true"></div>
+      </div>
+      <div class="story-panel__copy">
+        <h2>It remembers your meds</h2>
+        <p>Not just an alarm. A reminder that follows up gently when the moment matters.</p>
+      </div>
+    </section>
+
+    <section class="story-panel story-panel--alt" id="story-gym" data-story="gym">
+      <div class="story-panel__copy">
+        <h2>It gets you moving</h2>
+        <p>No productivity-app guilt. Just the right nudge for the energy you have.</p>
+      </div>
+      <div class="story-panel__visual">
+        <div class="mock-chat">
+          <div class="mock-chat__bubble mock-chat__bubble--them">Shoes on. One song. Walk out before the chorus ends.</div>
+          <div class="mock-chat__bubble mock-chat__bubble--you">…fine.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="story-panel story-panel--night" id="story-night" data-story="night">
+      <div class="story-panel__visual">
+        <div class="mock-chat mock-chat--night">
+          <div class="mock-chat__bubble mock-chat__bubble--them">You’re spinning. Slow breath with me. We only need the next two minutes.</div>
+        </div>
+      </div>
+      <div class="story-panel__copy">
+        <h2>It steadies you in stressful moments</h2>
+        <p>When things get loud, it gets quieter. Grounded prompts, calm tone, no fake positivity.</p>
+      </div>
+    </section>
+
+    <section class="story-panel" id="story-learn" data-story="learn">
+      <div class="story-panel__visual story-panel__visual--grow">
+        <div class="growth-stack" aria-hidden="true">
+          <span class="growth-stack__layer"></span>
+          <span class="growth-stack__layer"></span>
+          <span class="growth-stack__layer"></span>
+        </div>
+      </div>
+      <div class="story-panel__copy">
+        <h2>It learns you over time</h2>
+        <p>At first it asks. Then it notices patterns. Over time it settles into <em>your</em> rhythm and gets better at showing up well.</p>
+      </div>
+    </section>
+
+    <section class="landing-cta" id="signup">
+      <div class="shell shell--cta">
+        <div class="card landing-cta-card">
+          <h2>Start gently</h2>
+          <p class="lede">Name first. Tone and rhythm right after.</p>
+          <form id="signup-form" class="signup">
+            <label>What should we call you?
+              <input name="name" placeholder="Your first name" required autocomplete="name" />
+            </label>
+            <input name="timezone" type="hidden" value="UTC" />
+            <button type="submit">Continue</button>
+          </form>
+          <p id="signup-status" class="status"></p>
+          <p class="fineprint">
+            Coaching and wellbeing support, not medical advice. Emergencies → local urgent care.
           </p>
-        </header>
+        </div>
+      </div>
+    </section>
 
-        <section class="landing-grid">
-          <div class="landing-panel">
-            <h2>How it works</h2>
-            <ol class="how-list">
-              <li><strong>Start</strong>: tell us your name + timezone.</li>
-              <li><strong>Connect Telegram</strong>: paste your BotFather token (we validate it).</li>
-              <li><strong>Activate</strong>: we spin up your private coach and send you to chat.</li>
-            </ol>
-          </div>
-
-          <div class="landing-panel">
-            <h2>Get started</h2>
-            <p class="step-copy">You’ll have your own bot running in a few minutes.</p>
-
-            <form id="signup-form" class="signup">
-              <label>What should we call you?
-                <input name="name" placeholder="Vinod" required />
-              </label>
-              <label>Your timezone
-                <input name="timezone" placeholder="UTC" value="UTC" required />
-              </label>
-              <button type="submit">Create my coach</button>
-            </form>
-            <p id="signup-status" class="status"></p>
-
-            <p class="fineprint">
-              By continuing you agree this is coaching, not medical advice. Emergencies are always redirected to local urgent help.
-            </p>
-          </div>
-        </section>
-      </section>
-    </main>
-
-    <script>
-      const form = document.getElementById("signup-form");
-      const statusNode = document.getElementById("signup-status");
-      function setStatus(message, isError = false) {
-        statusNode.textContent = message;
-        statusNode.classList.toggle("status-error", isError);
-      }
-      async function fetchJson(url, options = {}) {
-        const response = await fetch(url, options);
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data.detail || "Request failed.");
-        }
-        return data;
-      }
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        try {
-          const name = form.querySelector('[name="name"]').value.trim();
-          const timezone = form.querySelector('[name="timezone"]').value.trim() || "UTC";
-          setStatus("Creating your setup link…");
-          const data = await fetchJson("/api/signup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, timezone }),
-          });
-          if (!data.setupToken) {
-            throw new Error("Missing setup token.");
-          }
-          window.location.href = `/setup/${encodeURIComponent(data.setupToken)}`;
-        } catch (error) {
-          setStatus(error.message || "Unable to start onboarding.", true);
-        }
-      });
-    </script>
+    <script src="/static/landing.js"></script>
   </body>
 </html>
-
