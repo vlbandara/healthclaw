@@ -9,7 +9,13 @@ from typing import Any
 from arq import Worker
 from arq.connections import RedisSettings
 
-from nanobot.health.api import _configure_logging, _load_health_instance_config_template
+from nanobot.health.api import (
+    _apply_setup_channel_config,
+    _build_setup_spawn_env,
+    _configure_logging,
+    _load_health_instance_config_template,
+    _setup_status_payload,
+)
 from nanobot.health.bootstrap import persist_health_onboarding
 from nanobot.health.metrics import spawn_attempts, spawn_failures, spawn_success
 from nanobot.health.registry import HealthRegistry
@@ -54,11 +60,17 @@ async def spawn_instance_job(ctx: dict[str, Any], setup_token: str) -> dict[str,
         phase2 = profile.get("phase2") or {}
         submission = {"phase1": dict(phase1), "phase2": dict(phase2)}
 
+    payload = _setup_status_payload(
+        health,
+        secret=health_secret,
+        fallback_links={},
+        bridge_snapshot=None,
+    )
     telegram_token = (health.load_setup_secrets(secret=health_secret).get("telegram", {}) or {}).get(
         "bot_token", ""
     )
-    if not telegram_token:
-        raise RuntimeError("Telegram bot token missing.")
+    if not any(bool(item.get("connected")) for item in payload["channels"].values() if isinstance(item, dict)):
+        raise RuntimeError("No connected channel available for activation.")
 
     # Ensure health profile exists on workspace_root (shared) for audit/debug.
     persist_health_onboarding(
@@ -66,10 +78,19 @@ async def spawn_instance_job(ctx: dict[str, Any], setup_token: str) -> dict[str,
         submission,
         invite=None,
         secret=health_secret,
+        stable_token_hint=setup_token,
     )
 
-    config_json = _load_health_instance_config_template()
-    minimax_api_key = os.environ.get("MINIMAX_API_KEY", "").strip()
+    config_json = _apply_setup_channel_config(
+        _load_health_instance_config_template(),
+        channels_payload=payload["channels"],
+    )
+    try:
+        config_json.setdefault("agents", {}).setdefault("defaults", {})["timezone"] = (
+            submission.get("phase1", {}) or {}
+        ).get("timezone", "UTC")
+    except Exception:
+        pass
     spawner = HealthInstanceSpawner()
     registry = HealthRegistry()
 
@@ -82,11 +103,11 @@ async def spawn_instance_job(ctx: dict[str, Any], setup_token: str) -> dict[str,
             config_json=config_json,
             onboarding_submission=submission,
             tier=tier,
-            extra_env={
-                "MINIMAX_API_KEY": minimax_api_key,
-                "TELEGRAM_BOT_TOKEN": telegram_token,
-                "HEALTH_VAULT_KEY": os.environ.get("HEALTH_VAULT_KEY", "").strip() or health_secret,
-            },
+            extra_env=_build_setup_spawn_env(
+                payload=payload,
+                health_secret=health_secret,
+                telegram_token=telegram_token,
+            ),
         )
         spawn_success.inc()
     except Exception:

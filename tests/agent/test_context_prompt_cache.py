@@ -129,6 +129,6 @@ def test_health_system_prompt_uses_health_identity_and_agents(tmp_path) -> None:
 
     prompt = ContextBuilder(workspace).build_system_prompt()
 
-    assert "sharp health coach with a real personality" in prompt
+    assert "calm and grounded health coach with a real personality" in prompt
     assert "Do not sound like a generic assistant." in prompt
     assert "helpful AI assistant" not in prompt

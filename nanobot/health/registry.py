@@ -188,10 +188,11 @@ class HealthRegistry:
 
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row
-            row = await db.execute_fetchone(
+            cursor = await db.execute(
                 "SELECT * FROM users WHERE setup_token = ?",
                 (setup_token,),
             )
+            row = await cursor.fetchone()
             if not row:
                 return None
             return UserRecord(
@@ -288,6 +289,35 @@ class HealthRegistry:
                 WHERE id = ?
                 """,
                 (container_id, workspace_volume, status, user_id),
+            )
+            await db.commit()
+
+    async def delete_setup_tokens(self, setup_tokens: list[str]) -> None:
+        cleaned = [str(token or "").strip() for token in setup_tokens if str(token or "").strip()]
+        if not cleaned:
+            return
+        await self.init()
+        if self.url and self._pool is not None:
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    DELETE FROM users
+                    WHERE setup_token = ANY($1::text[])
+                      AND status = 'setup'
+                    """,
+                    cleaned,
+                )
+            return
+
+        placeholders = ",".join("?" for _ in cleaned)
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                f"""
+                DELETE FROM users
+                WHERE setup_token IN ({placeholders})
+                  AND status = 'setup'
+                """,
+                cleaned,
             )
             await db.commit()
 

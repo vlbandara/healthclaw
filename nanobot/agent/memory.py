@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shutil
 import weakref
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
+from zoneinfo import ZoneInfo
 
 from loguru import logger
 
@@ -27,6 +29,92 @@ from nanobot.utils.prompt_templates import render_template
 if TYPE_CHECKING:
     from nanobot.providers.base import LLMProvider
     from nanobot.session.manager import Session, SessionManager
+
+
+_INTEREST_SECTIONS = (
+    "stable_interests",
+    "active_curiosities",
+    "avoid_topics",
+)
+_INTEREST_SECTION_TITLES = {
+    "stable_interests": "Stable Interests",
+    "active_curiosities": "Active Curiosities",
+    "avoid_topics": "Avoid Topics",
+}
+_INTEREST_CAPTURE_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("stable_interests", r"\b(?:i|we)\s+(?:really\s+)?(?:like|love|enjoy)\s+([^.!?\n]+)"),
+    ("stable_interests", r"\b(?:i(?:'m| am)?|im)\s+(?:really\s+)?into\s+([^.!?\n]+)"),
+    ("stable_interests", r"\b(?:my favorite(?: thing)? is|i(?:'m| am)? a fan of|im a fan of)\s+([^.!?\n]+)"),
+    ("active_curiosities", r"\b(?:i(?:'m| am)?|im)\s+(?:curious about|interested in)\s+([^.!?\n]+)"),
+    ("active_curiosities", r"\b(?:i want to learn|i(?:'m| am)? learning|im learning|i(?:'ve| have) been exploring)\s+([^.!?\n]+)"),
+    ("active_curiosities", r"\b(?:let'?s|lets|we can)\s+talk about\s+([^.!?\n]+)"),
+    ("avoid_topics", r"\b(?:don'?t|do not)\s+(?:talk to me about|ask me about|bring up|want to talk about|want to hear about)\s+([^.!?\n]+)"),
+    ("avoid_topics", r"\b(?:i(?:'m| am)?|im)\s+not\s+(?:into|interested in)\s+([^.!?\n]+)"),
+)
+_INTEREST_SPLIT_RE = re.compile(r"\s*(?:,|/|;|\band\b|\bor\b)\s*", re.IGNORECASE)
+_INTEREST_TRAILING_RE = re.compile(
+    r"\s+(?:because|but|though|although|unless|since|when|while|if)\b.*$",
+    re.IGNORECASE,
+)
+
+
+def _safe_timezone(value: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo((value or "").strip() or "UTC")
+    except Exception:
+        return ZoneInfo("UTC")
+
+
+def _local_now(*, timezone: str | None, now: datetime | None = None) -> datetime:
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    return current.astimezone(_safe_timezone(timezone))
+
+
+def _normalize_interest_topic(value: str) -> str:
+    topic = str(value or "").strip().strip("\"'`")
+    topic = re.sub(
+        r"^(?:i(?:'m| am)?|im|we)\s+(?:really\s+)?(?:like|love|enjoy|am into|into|interested in|curious about|want to learn|have been exploring)\s+",
+        "",
+        topic,
+        flags=re.IGNORECASE,
+    )
+    topic = _INTEREST_TRAILING_RE.sub("", topic).strip()
+    topic = re.sub(r"^(?:the|a|an)\s+", "", topic, flags=re.IGNORECASE)
+    topic = re.sub(r"\s+", " ", topic)
+    topic = topic.rstrip(" .!?")
+    return topic
+
+
+def _split_interest_topics(raw: str) -> list[str]:
+    parts = []
+    for piece in _INTEREST_SPLIT_RE.split(raw):
+        topic = _normalize_interest_topic(piece)
+        if topic:
+            parts.append(topic)
+    return parts
+
+
+def _extract_interest_signals(text: str) -> dict[str, list[str]]:
+    lowered = str(text or "").strip()
+    found = {section: [] for section in _INTEREST_SECTIONS}
+    if not lowered:
+        return found
+    for section, pattern in _INTEREST_CAPTURE_PATTERNS:
+        for match in re.finditer(pattern, lowered, flags=re.IGNORECASE):
+            for topic in _split_interest_topics(match.group(1)):
+                if len(topic) < 3:
+                    continue
+                found[section].append(topic)
+    return found
+
+
+def _interest_display(topic: str) -> str:
+    cleaned = _normalize_interest_topic(topic)
+    if not cleaned:
+        return ""
+    return cleaned[0].upper() + cleaned[1:]
 
 
 # ---------------------------------------------------------------------------
@@ -48,15 +136,18 @@ class MemoryStore:
         self.max_history_entries = max_history_entries
         self.memory_dir = ensure_dir(workspace / "memory")
         self.memory_file = self.memory_dir / "MEMORY.md"
+        self.interest_file = self.memory_dir / "INTERESTS.md"
         self.history_file = self.memory_dir / "history.jsonl"
         self.legacy_history_file = self.memory_dir / "HISTORY.md"
         self.soul_file = workspace / "SOUL.md"
         self.user_file = workspace / "USER.md"
         self._cursor_file = self.memory_dir / ".cursor"
         self._dream_cursor_file = self.memory_dir / ".dream_cursor"
+        self._engagement_state_file = self.memory_dir / ".engagement_state.json"
         self._git = GitStore(workspace, tracked_files=[
-            "SOUL.md", "USER.md", "memory/MEMORY.md",
+            "SOUL.md", "USER.md", "memory/MEMORY.md", "memory/INTERESTS.md",
         ])
+        self._archive_legacy_autonomy_state()
         self._maybe_migrate_legacy_history()
 
     @property
@@ -71,6 +162,23 @@ class MemoryStore:
             return path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return ""
+
+    def _archive_legacy_autonomy_state(self) -> None:
+        legacy_dir = self.workspace / "autonomy"
+        if not legacy_dir.exists():
+            return
+        archive_root = ensure_dir(self.memory_dir / "legacy_autonomy")
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        target = archive_root / f"autonomy-{stamp}"
+        suffix = 2
+        while target.exists():
+            target = archive_root / f"autonomy-{stamp}-{suffix}"
+            suffix += 1
+        try:
+            shutil.move(str(legacy_dir), str(target))
+            logger.info("Archived legacy autonomy state to {}", target)
+        except Exception:
+            logger.exception("Failed to archive legacy autonomy state at {}", legacy_dir)
 
     def _maybe_migrate_legacy_history(self) -> None:
         """One-time upgrade from legacy HISTORY.md to history.jsonl.
@@ -217,11 +325,257 @@ class MemoryStore:
     def write_user(self, content: str) -> None:
         self.user_file.write_text(content, encoding="utf-8")
 
+    # -- INTERESTS.md --------------------------------------------------------
+
+    def read_interest_memory(self) -> str:
+        return self.read_file(self.interest_file)
+
+    def write_interest_memory(self, content: str) -> None:
+        self.interest_file.write_text(content.rstrip() + "\n", encoding="utf-8")
+
+    # -- engagement state ----------------------------------------------------
+
+    def _default_engagement_state(self) -> dict[str, Any]:
+        return {
+            "stable_interests": [],
+            "active_curiosities": [],
+            "avoid_topics": [],
+            "reconnect_topics": [],
+            "last_user_message_at": "",
+            "last_user_local_date": "",
+            "last_interest_digest_local_date": "",
+            "delivery": {
+                "last_sent_at": "",
+                "last_sent_local_date": "",
+                "recent_topics": [],
+            },
+        }
+
+    def read_engagement_state(self) -> dict[str, Any]:
+        if not self._engagement_state_file.exists():
+            return self._default_engagement_state()
+        try:
+            data = json.loads(self._engagement_state_file.read_text(encoding="utf-8"))
+        except Exception:
+            return self._default_engagement_state()
+        if not isinstance(data, dict):
+            return self._default_engagement_state()
+        state = self._default_engagement_state()
+        state.update(data)
+        delivery = state.get("delivery")
+        if not isinstance(delivery, dict):
+            delivery = {}
+        merged_delivery = dict(self._default_engagement_state()["delivery"])
+        merged_delivery.update(delivery)
+        state["delivery"] = merged_delivery
+        return state
+
+    def write_engagement_state(self, state: dict[str, Any]) -> None:
+        payload = self._default_engagement_state()
+        payload.update(state or {})
+        delivery = dict(self._default_engagement_state()["delivery"])
+        delivery.update(payload.get("delivery") or {})
+        payload["delivery"] = delivery
+        self._engagement_state_file.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def _interest_section_items(self, state: dict[str, Any], key: str) -> list[dict[str, Any]]:
+        values = state.get(key) or []
+        return [item for item in values if isinstance(item, dict) and _normalize_interest_topic(item.get("topic", ""))]
+
+    def _upsert_interest_item(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        topic: str,
+        evidence: str,
+        seen_at: str,
+    ) -> None:
+        normalized = _normalize_interest_topic(topic).lower()
+        if not normalized:
+            return
+        for item in items:
+            if _normalize_interest_topic(item.get("topic", "")).lower() != normalized:
+                continue
+            item["last_seen_at"] = seen_at
+            item["mentions"] = int(item.get("mentions") or 0) + 1
+            item["topic"] = _interest_display(topic)
+            evidence_lines = [str(line).strip() for line in (item.get("evidence") or []) if str(line).strip()]
+            if evidence and evidence not in evidence_lines:
+                evidence_lines.append(evidence)
+            item["evidence"] = evidence_lines[-3:]
+            return
+        items.append(
+            {
+                "topic": _interest_display(topic),
+                "first_seen_at": seen_at,
+                "last_seen_at": seen_at,
+                "mentions": 1,
+                "evidence": [evidence] if evidence else [],
+            }
+        )
+
+    def _recompute_reconnect_topics(self, state: dict[str, Any]) -> None:
+        avoids = {
+            _normalize_interest_topic(item.get("topic", "")).lower()
+            for item in self._interest_section_items(state, "avoid_topics")
+        }
+        topics: list[str] = []
+        for key in ("stable_interests", "active_curiosities"):
+            for item in self._interest_section_items(state, key):
+                topic = _interest_display(str(item.get("topic") or ""))
+                if not topic:
+                    continue
+                if topic.lower() in avoids:
+                    continue
+                if topic not in topics:
+                    topics.append(topic)
+        state["reconnect_topics"] = topics[:8]
+
+    def _render_interest_memory(self, state: dict[str, Any]) -> str:
+        lines = ["# Interest Memory", "", "Hidden internal summary of what keeps the user engaged."]
+        for key in ("stable_interests", "active_curiosities", "avoid_topics"):
+            lines.extend(["", f"## {_INTEREST_SECTION_TITLES[key]}"])
+            items = self._interest_section_items(state, key)
+            if not items:
+                lines.append("- None recorded yet.")
+                continue
+            for item in items:
+                topic = _interest_display(str(item.get("topic") or ""))
+                evidence = [str(line).strip() for line in (item.get("evidence") or []) if str(line).strip()]
+                if evidence:
+                    lines.append(f"- {topic}: {evidence[-1]}")
+                else:
+                    lines.append(f"- {topic}")
+        lines.extend(["", "## Reconnect Topics"])
+        reconnect_topics = [topic for topic in (state.get("reconnect_topics") or []) if _normalize_interest_topic(topic)]
+        if reconnect_topics:
+            for topic in reconnect_topics:
+                lines.append(f"- {_interest_display(str(topic))}")
+        else:
+            lines.append("- None recorded yet.")
+        return "\n".join(lines).rstrip() + "\n"
+
+    def _persist_interest_state(self, state: dict[str, Any]) -> None:
+        self._recompute_reconnect_topics(state)
+        self.write_engagement_state(state)
+        self.write_interest_memory(self._render_interest_memory(state))
+
+    def record_user_activity(self, *, timezone: str | None, now: datetime | None = None) -> None:
+        local_now = _local_now(timezone=timezone, now=now)
+        state = self.read_engagement_state()
+        state["last_user_message_at"] = local_now.replace(microsecond=0).isoformat()
+        state["last_user_local_date"] = local_now.strftime("%Y-%m-%d")
+        self.write_engagement_state(state)
+
+    def capture_interest_signals(
+        self,
+        text: str,
+        *,
+        timezone: str | None,
+        now: datetime | None = None,
+    ) -> bool:
+        signals = _extract_interest_signals(text)
+        if not any(signals.values()):
+            return False
+        local_now = _local_now(timezone=timezone, now=now)
+        seen_at = local_now.replace(microsecond=0).isoformat()
+        evidence = str(text or "").strip()
+        state = self.read_engagement_state()
+        for section in _INTEREST_SECTIONS:
+            items = self._interest_section_items(state, section)
+            for topic in signals[section]:
+                self._upsert_interest_item(
+                    items,
+                    topic=topic,
+                    evidence=evidence,
+                    seen_at=seen_at,
+                )
+            state[section] = items
+        self._persist_interest_state(state)
+        return True
+
+    def apply_interest_digest(self, content: str, *, local_date: str) -> None:
+        markdown = str(content or "").strip()
+        if not markdown:
+            self.mark_interest_digest(local_date=local_date)
+            return
+        self.write_interest_memory(markdown)
+        state = self.read_engagement_state()
+        current_section = ""
+        parsed: dict[str, list[str]] = {key: [] for key in _INTEREST_SECTIONS}
+        reconnect_topics: list[str] = []
+        for raw_line in markdown.splitlines():
+            line = raw_line.strip()
+            if line.startswith("## "):
+                title = line[3:].strip().lower()
+                if title == "stable interests":
+                    current_section = "stable_interests"
+                elif title == "active curiosities":
+                    current_section = "active_curiosities"
+                elif title == "avoid topics":
+                    current_section = "avoid_topics"
+                elif title == "reconnect topics":
+                    current_section = "reconnect_topics"
+                else:
+                    current_section = ""
+                continue
+            if not line.startswith("- "):
+                continue
+            topic = _normalize_interest_topic(line[2:].split(":", 1)[0])
+            if not topic:
+                continue
+            if current_section == "reconnect_topics":
+                reconnect_topics.append(_interest_display(topic))
+            elif current_section in parsed:
+                parsed[current_section].append(topic)
+        local_timestamp = f"{local_date}T00:00:00"
+        for section, topics in parsed.items():
+            items = self._interest_section_items(state, section)
+            for topic in topics:
+                self._upsert_interest_item(items, topic=topic, evidence="", seen_at=local_timestamp)
+            state[section] = items
+        if reconnect_topics:
+            state["reconnect_topics"] = reconnect_topics[:8]
+        state["last_interest_digest_local_date"] = local_date
+        self.write_engagement_state(state)
+
+    def mark_interest_digest(self, *, local_date: str) -> None:
+        state = self.read_engagement_state()
+        state["last_interest_digest_local_date"] = local_date
+        self.write_engagement_state(state)
+
+    def record_engagement_delivery(
+        self,
+        *,
+        topic: str,
+        timezone: str | None,
+        now: datetime | None = None,
+    ) -> None:
+        local_now = _local_now(timezone=timezone, now=now)
+        state = self.read_engagement_state()
+        delivery = dict(state.get("delivery") or {})
+        delivery["last_sent_at"] = local_now.replace(microsecond=0).isoformat()
+        delivery["last_sent_local_date"] = local_now.strftime("%Y-%m-%d")
+        recent_topics = [str(item).strip() for item in (delivery.get("recent_topics") or []) if str(item).strip()]
+        cleaned_topic = _interest_display(topic)
+        if cleaned_topic:
+            recent_topics.append(cleaned_topic)
+        delivery["recent_topics"] = recent_topics[-8:]
+        state["delivery"] = delivery
+        self.write_engagement_state(state)
+
     # -- context injection (used by context.py) ------------------------------
 
     def get_memory_context(self) -> str:
         long_term = self.read_memory()
         return f"## Long-term Memory\n{long_term}" if long_term else ""
+
+    def get_interest_context(self) -> str:
+        interests = self.read_interest_memory()
+        return f"## Interest Memory\n{interests}" if interests else ""
 
     # -- history.jsonl — append-only, JSONL format ---------------------------
 
@@ -251,6 +605,12 @@ class MemoryStore:
     def read_unprocessed_history(self, since_cursor: int) -> list[dict[str, Any]]:
         """Return history entries with cursor > *since_cursor*."""
         return [e for e in self._read_entries() if e["cursor"] > since_cursor]
+
+    def read_recent_history(self, limit: int = 40) -> list[dict[str, Any]]:
+        entries = self._read_entries()
+        if limit <= 0:
+            return entries
+        return entries[-limit:]
 
     def compact_history(self) -> None:
         """Drop oldest entries if the file exceeds *max_history_entries*."""
@@ -564,6 +924,8 @@ class Dream:
         max_batch_size: int = 20,
         max_iterations: int = 10,
         max_tool_result_chars: int = 16_000,
+        timezone: str | None = None,
+        interest_quiet_hours: tuple[str, str] = ("23:00", "06:00"),
     ):
         self.store = store
         self.provider = provider
@@ -571,6 +933,8 @@ class Dream:
         self.max_batch_size = max_batch_size
         self.max_iterations = max_iterations
         self.max_tool_result_chars = max_tool_result_chars
+        self.timezone = timezone or "UTC"
+        self.interest_quiet_hours = interest_quiet_hours
         self._runner = AgentRunner(provider)
         self._tools = self._build_tools()
 
@@ -591,6 +955,103 @@ class Dream:
         if is_health_workspace(self.store.workspace):
             prompt += "\n\n" + render_template("health/dream_appendix.md", strip=True)
         return prompt
+
+    @staticmethod
+    def _parse_clock(value: str) -> tuple[int, int]:
+        try:
+            hour_str, minute_str = value.split(":", 1)
+            return int(hour_str), int(minute_str)
+        except Exception:
+            return 23, 0
+
+    def _interest_timezone(self) -> str:
+        if is_health_workspace(self.store.workspace):
+            try:
+                profile = json.loads((self.store.workspace / "health" / "profile.json").read_text(encoding="utf-8"))
+            except Exception:
+                profile = {}
+            timezone = str(profile.get("timezone") or "").strip()
+            if timezone:
+                return timezone
+        return self.timezone
+
+    def _interest_local_now(self, now: datetime | None = None) -> datetime:
+        return _local_now(timezone=self._interest_timezone(), now=now)
+
+    def _interest_digest_due(self, *, now: datetime | None = None) -> tuple[bool, str]:
+        local_now = self._interest_local_now(now)
+        local_date = local_now.strftime("%Y-%m-%d")
+        state = self.store.read_engagement_state()
+        if str(state.get("last_interest_digest_local_date") or "").strip() == local_date:
+            return False, local_date
+
+        start, end = self.interest_quiet_hours
+        if is_health_workspace(self.store.workspace):
+            try:
+                profile = json.loads((self.store.workspace / "health" / "profile.json").read_text(encoding="utf-8"))
+            except Exception:
+                profile = {}
+            sleep_time = str(((profile.get("routines") or {}).get("sleep_time")) or "").strip()
+            if sleep_time:
+                start = sleep_time
+
+        start_h, start_m = self._parse_clock(start)
+        end_h, end_m = self._parse_clock(end)
+        current_minutes = local_now.hour * 60 + local_now.minute
+        start_minutes = start_h * 60 + start_m
+        end_minutes = end_h * 60 + end_m
+        if start_minutes == end_minutes:
+            quiet = False
+        elif start_minutes < end_minutes:
+            quiet = start_minutes <= current_minutes < end_minutes
+        else:
+            quiet = current_minutes >= start_minutes or current_minutes < end_minutes
+        return quiet, local_date
+
+    async def _maybe_run_interest_digest(self) -> bool:
+        due, local_date = self._interest_digest_due()
+        if not due:
+            return False
+
+        recent_history = self.store.read_recent_history(limit=30)
+        interest_memory = self.store.read_interest_memory().strip() or "(empty)"
+        user_md = self.store.read_user().strip() or "(empty)"
+        memory_md = self.store.read_memory().strip() or "(empty)"
+        if not recent_history and interest_memory == "(empty)":
+            self.store.mark_interest_digest(local_date=local_date)
+            return False
+
+        history_text = "\n".join(
+            f"[{entry['timestamp']}] {entry['content']}"
+            for entry in recent_history
+        ) or "(empty)"
+        prompt = (
+            f"## Current INTERESTS.md\n{interest_memory}\n\n"
+            f"## Current USER.md\n{user_md}\n\n"
+            f"## Current MEMORY.md\n{memory_md}\n\n"
+            f"## Recent History\n{history_text}"
+        )
+        try:
+            response = await self.provider.chat_with_retry(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": render_template("agent/interest_digest.md", strip=True),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                tools=None,
+                tool_choice=None,
+            )
+        except Exception:
+            logger.exception("Interest digest failed")
+            return False
+
+        content = str(response.content or "").strip()
+        self.store.apply_interest_digest(content, local_date=local_date)
+        logger.info("Interest digest updated for {}", local_date)
+        return True
 
     # -- main entry ----------------------------------------------------------
 
@@ -645,12 +1106,14 @@ class Dream:
             if not result or result.stop_reason != "completed":
                 logger.warning("Dream Phase 2 retry incomplete ({})", getattr(result, "stop_reason", None))
                 return True
-            return self._dream_success_finalize(result, end_cursor=end_cursor, batch_timestamp="")
+            finalized = self._dream_success_finalize(result, end_cursor=end_cursor, batch_timestamp="")
+            digested = await self._maybe_run_interest_digest()
+            return finalized or digested
 
         last_cursor = self.store.get_last_dream_cursor()
         entries = self.store.read_unprocessed_history(since_cursor=last_cursor)
         if not entries:
-            return False
+            return await self._maybe_run_interest_digest()
 
         batch = entries[: self.max_batch_size]
         logger.info(
@@ -704,7 +1167,9 @@ class Dream:
             )
             return True
 
-        return self._dream_success_finalize(result, end_cursor=end_cursor, batch_timestamp=batch_ts)
+        finalized = self._dream_success_finalize(result, end_cursor=end_cursor, batch_timestamp=batch_ts)
+        digested = await self._maybe_run_interest_digest()
+        return finalized or digested
 
     def _dream_success_finalize(self, result, *, end_cursor: int, batch_timestamp: str) -> bool:
         changelog: list[str] = []

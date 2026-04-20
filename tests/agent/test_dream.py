@@ -1,5 +1,6 @@
 """Tests for the Dream class — two-phase memory consolidation via AgentRunner."""
 
+from datetime import datetime
 import pytest
 
 from unittest.mock import AsyncMock, MagicMock
@@ -95,3 +96,32 @@ class TestDreamRun:
         entries = store.read_unprocessed_history(since_cursor=0)
         assert all(e["cursor"] > 0 for e in entries)
 
+    async def test_interest_digest_runs_once_per_local_day_in_quiet_window(self, dream, mock_provider, mock_runner, store):
+        store.append_history("User loves trail running and likes finding good coffee.")
+        mock_provider.chat_with_retry.side_effect = [
+            MagicMock(content="New fact"),
+            MagicMock(
+                content=(
+                    "# Interest Memory\n\n"
+                    "## Stable Interests\n- Trail running\n\n"
+                    "## Active Curiosities\n- Good coffee spots\n\n"
+                    "## Avoid Topics\n- None recorded yet.\n\n"
+                    "## Reconnect Topics\n- Trail running\n"
+                )
+            ),
+        ]
+        mock_runner.run = AsyncMock(return_value=_make_run_result())
+        dream._interest_local_now = lambda now=None: datetime(2026, 4, 19, 23, 30)
+
+        result = await dream.run()
+
+        assert result is True
+        assert "Trail running" in store.read_interest_memory()
+        assert store.read_engagement_state()["last_interest_digest_local_date"] == "2026-04-19"
+
+        mock_provider.chat_with_retry.reset_mock()
+        mock_provider.chat_with_retry.return_value = MagicMock(content="should not run")
+        again = await dream.run()
+
+        assert again is False
+        mock_provider.chat_with_retry.assert_not_called()

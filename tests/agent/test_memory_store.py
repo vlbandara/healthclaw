@@ -45,6 +45,31 @@ class TestMemoryStoreBasicIO:
         assert "Long-term Memory" in ctx
         assert "important fact" in ctx
 
+    def test_capture_interest_signals_updates_hidden_interest_memory(self, store):
+        changed = store.capture_interest_signals(
+            "I love trail running and I am interested in local food spots.",
+            timezone="UTC",
+            now=datetime(2026, 4, 19, 10, 0),
+        )
+
+        assert changed is True
+        interest_memory = store.read_interest_memory()
+        assert "Trail running" in interest_memory
+        assert "Local food spots" in interest_memory
+        state = store.read_engagement_state()
+        assert state["reconnect_topics"][:2] == ["Trail running", "Local food spots"]
+
+    def test_record_engagement_delivery_tracks_recent_topics(self, store):
+        store.record_engagement_delivery(
+            topic="Trail running",
+            timezone="UTC",
+            now=datetime(2026, 4, 19, 10, 0),
+        )
+
+        state = store.read_engagement_state()
+        assert state["delivery"]["last_sent_local_date"] == "2026-04-19"
+        assert state["delivery"]["recent_topics"] == ["Trail running"]
+
 
 class TestHistoryWithCursor:
     def test_append_history_returns_cursor(self, store):

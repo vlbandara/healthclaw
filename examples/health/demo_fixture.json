@@ -1,0 +1,105 @@
+{
+  "userToken": "demo-returning-user",
+  "invite": {
+    "channel": "telegram",
+    "chat_id": "demo-telegram-chat"
+  },
+  "submission": {
+    "phase1": {
+      "full_name": "Dana Perera",
+      "email": "",
+      "phone": "",
+      "timezone": "Asia/Colombo",
+      "language": "en",
+      "preferred_channel": "telegram",
+      "location": "Colombo, Sri Lanka",
+      "age_range": "25-34",
+      "sex": "not set",
+      "gender": "not set",
+      "height_cm": null,
+      "weight_kg": null,
+      "known_conditions": [],
+      "medications": [],
+      "allergies": [],
+      "wake_time": "06:30",
+      "sleep_time": "22:30",
+      "consents": ["privacy"]
+    },
+    "phase2": {
+      "mood_interest": 1,
+      "mood_down": 1,
+      "activity_level": "mixed",
+      "nutrition_quality": "mixed",
+      "sleep_quality": "fair",
+      "stress_level": "moderate",
+      "goals": [
+        "Protect sleep and recovery",
+        "Stay consistent with short training sessions"
+      ],
+      "current_concerns": "Bedtime drift after stressful workdays.",
+      "reminder_preferences": [
+        "Short, direct check-ins"
+      ],
+      "medication_reminder_windows": [],
+      "morning_check_in": true,
+      "weekly_summary": true
+    }
+  },
+  "profilePatch": {
+    "proactive_enabled": true,
+    "voice_preferred": true,
+    "last_seen_local_date": "2026-04-14"
+  },
+  "continuity": {
+    "friction_points": [
+      "Stress pushes bedtime later than planned.",
+      "Skips movement when the day already feels messy."
+    ],
+    "communication_preferences": [
+      "Prefers brief replies.",
+      "Prefers direct coaching."
+    ],
+    "open_loop": "Do a 10 minute walk after lunch tomorrow."
+  },
+  "lifecycle": {
+    "stage": "settling",
+    "days_active": 4,
+    "total_interactions": 9,
+    "streak": 2,
+    "trust_level": "warming"
+  },
+  "historySummary": {
+    "timestamp": "2026-04-14T18:45:00+05:30",
+    "content": "Dana has been more responsive to short morning check-ins than late-night nudges. Sleep drift shows up after high-stress workdays. They respond well to one concrete next step and direct coaching."
+  },
+  "session": {
+    "key": "telegram:demo-telegram-chat",
+    "messages": [
+      {
+        "role": "user",
+        "timestamp": "2026-04-14T18:30:00+05:30",
+        "content": "I kept slipping bedtime again this week. I'll do a 10 minute walk after lunch tomorrow.",
+        "input_mode": "voice"
+      },
+      {
+        "role": "assistant",
+        "timestamp": "2026-04-14T18:31:00+05:30",
+        "content": "That drift is showing up when the day already feels noisy. Keep tomorrow stupidly small: 10 minute walk after lunch, then send me one line on how it felt.",
+        "health_variation_mode": "ground",
+        "health_opening_style": "gentle_reentry"
+      },
+      {
+        "role": "user",
+        "timestamp": "2026-04-15T07:10:00+05:30",
+        "content": "Morning. I actually did the walk yesterday."
+      },
+      {
+        "role": "assistant",
+        "timestamp": "2026-04-15T07:11:00+05:30",
+        "content": "Good. That counts. Keep the streak alive with one repeatable thing today: protect bedtime by 15 minutes.",
+        "health_variation_mode": "celebrate",
+        "health_opening_style": "warm_observation"
+      }
+    ]
+  }
+}

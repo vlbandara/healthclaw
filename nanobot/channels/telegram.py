@@ -27,6 +27,7 @@ from nanobot.utils.helpers import split_message
 
 TELEGRAM_MAX_MESSAGE_LEN = 4000  # Telegram message character limit
 TELEGRAM_REPLY_CONTEXT_MAX_LEN = TELEGRAM_MAX_MESSAGE_LEN  # Max length for reply context in user message
+_VOICE_TRANSCRIPTION_RETRY = "[voice-transcription-retry]"
 
 
 def _escape_telegram_html(text: str) -> str:
@@ -684,8 +685,9 @@ class TelegramChannel(BaseChannel):
             )
             return
 
+        assistant_name = "BiomeClaw" if self.workspace and is_health_workspace(self.workspace) else "nanobot"
         await update.message.reply_text(
-            f"👋 Hi {user.first_name}! I'm nanobot.\n\n"
+            f"👋 Hi {user.first_name}! I'm {assistant_name}.\n\n"
             "Send me a message and I'll respond!\n"
             "Type /help to see available commands."
         )
@@ -694,7 +696,10 @@ class TelegramChannel(BaseChannel):
         """Handle /help command, bypassing ACL so all users can access it."""
         if not update.message:
             return
-        await update.message.reply_text(build_help_text())
+        from nanobot.health.storage import is_health_workspace
+
+        assistant_name = "BiomeClaw" if self.workspace and is_health_workspace(self.workspace) else "nanobot"
+        await update.message.reply_text(build_help_text(assistant_name=assistant_name))
 
     @staticmethod
     def _sender_id(user) -> str:
@@ -794,12 +799,14 @@ class TelegramChannel(BaseChannel):
                 transcription = await self.transcribe_audio(file_path)
                 if transcription:
                     logger.info("Transcribed {}: {}...", media_type, transcription[:50])
-                    return [path_str], [f"[transcription: {transcription}]"]
-                return [path_str], [f"[{media_type}: {path_str}]"]
+                    return [path_str], [transcription.strip()]
+                return [path_str], [_VOICE_TRANSCRIPTION_RETRY]
             return [path_str], [f"[{media_type}: {path_str}]"]
         except Exception as e:
             logger.warning("Failed to download message media: {}", e)
             if add_failure_content:
+                if media_type in ("voice", "audio"):
+                    return [], [_VOICE_TRANSCRIPTION_RETRY]
                 return [], [f"[{media_type}: download failed]"]
             return [], []
 
@@ -932,6 +939,12 @@ class TelegramChannel(BaseChannel):
         current_media_paths, current_media_parts = await self._download_message_media(
             message, add_failure_content=True
         )
+        if current_media_parts == [_VOICE_TRANSCRIPTION_RETRY]:
+            if hasattr(message, "reply_text"):
+                await message.reply_text(
+                    "I couldn't transcribe that voice note. Please try again or send the key point as text."
+                )
+            return
         media_paths.extend(current_media_paths)
         content_parts.extend(current_media_parts)
         if current_media_paths:
@@ -954,6 +967,8 @@ class TelegramChannel(BaseChannel):
 
         str_chat_id = str(chat_id)
         metadata = self._build_message_metadata(message, user)
+        if getattr(message, "voice", None) or getattr(message, "audio", None):
+            metadata["input_mode"] = "voice"
         session_key = self._derive_topic_session_key(message)
 
         # Telegram media groups: buffer briefly, forward as one aggregated turn.

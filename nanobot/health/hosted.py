@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -37,11 +39,33 @@ def get_whatsapp_bridge_url() -> str:
 
 
 def get_whatsapp_bridge_token() -> str:
-    return (
+    configured = (
         os.environ.get("WHATSAPP_BRIDGE_TOKEN")
         or os.environ.get("BRIDGE_TOKEN")
         or ""
     ).strip()
+    if configured:
+        return configured
+
+    auth_dir = Path(os.environ.get("NANOBOT_WORKSPACE", "~/.nanobot/workspace")).expanduser().resolve().parent / "whatsapp-auth"
+    token_path = auth_dir / "bridge-token"
+    if token_path.exists():
+        token = token_path.read_text(encoding="utf-8").strip()
+        if token:
+            return token
+
+    auth_dir.mkdir(parents=True, exist_ok=True)
+    token = secrets.token_urlsafe(32)
+    try:
+        with open(token_path, "x", encoding="utf-8") as handle:
+            handle.write(token)
+        try:
+            token_path.chmod(0o600)
+        except OSError:
+            pass
+        return token
+    except FileExistsError:
+        return token_path.read_text(encoding="utf-8").strip()
 
 
 def _extract_phone(value: str) -> str:

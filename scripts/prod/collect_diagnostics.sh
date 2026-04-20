@@ -66,10 +66,15 @@ for endpoint in healthz readyz metrics api/admin/status; do
 done
 
 ssh "${target}" "uname -a" >"${OUT_DIR}/remote-uname.txt" 2>"${OUT_DIR}/remote-uname.stderr" || true
+ssh "${target}" "uptime" >"${OUT_DIR}/remote-uptime.txt" 2>"${OUT_DIR}/remote-uptime.stderr" || true
+ssh "${target}" "free -m" >"${OUT_DIR}/remote-free.txt" 2>"${OUT_DIR}/remote-free.stderr" || true
+ssh "${target}" "df -h /" >"${OUT_DIR}/remote-df-root.txt" 2>"${OUT_DIR}/remote-df-root.stderr" || true
+ssh "${target}" "COLUMNS=200 top -bn1 | head -n 20" >"${OUT_DIR}/remote-top.txt" 2>"${OUT_DIR}/remote-top.stderr" || true
 ssh "${target}" "docker version" >"${OUT_DIR}/docker-version.txt" 2>"${OUT_DIR}/docker-version.stderr" || true
 ssh "${target}" "cd '${APP_DIR}' && docker compose ps" >"${OUT_DIR}/docker-compose-ps.txt" 2>"${OUT_DIR}/docker-compose-ps.stderr" || true
 ssh "${target}" "cd '${APP_DIR}' && docker compose logs --since '${LOG_SINCE}' --timestamps --no-color" >"${OUT_DIR}/docker-compose-logs.txt" 2>"${OUT_DIR}/docker-compose-logs.stderr" || true
 ssh "${target}" "docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}'" >"${OUT_DIR}/docker-ps.txt" 2>"${OUT_DIR}/docker-ps.stderr" || true
+ssh "${target}" "docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}'" >"${OUT_DIR}/docker-stats.txt" 2>"${OUT_DIR}/docker-stats.stderr" || true
 ssh "${target}" "for cid in \$(cd '${APP_DIR}' && docker compose ps -q); do docker inspect --format '{{.Name}}|{{.Id}}|{{.Config.Image}}|{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.RestartCount}}' \"\$cid\"; done" >"${OUT_DIR}/docker-inspect-state.txt" 2>"${OUT_DIR}/docker-inspect-state.stderr" || true
 
 tar -czf "${OUT_DIR}.tar.gz" -C "${OUT_DIR}" .

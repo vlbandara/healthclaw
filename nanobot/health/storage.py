@@ -6,10 +6,12 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -20,11 +22,13 @@ _VAULT_NAME = "vault.json.enc"
 _INVITES_NAME = "invites.json"
 _SETUP_NAME = "setup.json"
 _SETUP_SECRETS_NAME = "setup-secrets.json.enc"
+_RUNTIME_NAME = "runtime.json"
 _DEFAULT_INVITE_TTL_HOURS = 24
 _DEFAULT_SETUP_TTL_HOURS = 24 * 7
 _DEFAULT_HOSTED_PROVIDER = "minimax"
 _DEFAULT_HOSTED_MODEL = "MiniMax-M2.7"
 _PREFERRED_NAME_MAX_LEN = 40
+_CLOCK_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 
 def _clean_list(values: list[str] | None) -> list[str]:
@@ -57,6 +61,33 @@ def derive_preferred_name(full_name: str) -> str:
 def normalize_preferred_name(value: str) -> str:
     cleaned = " ".join(str(value or "").strip().split())
     return cleaned[:_PREFERRED_NAME_MAX_LEN]
+
+
+def validate_health_timezone(value: str) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        raise ValueError("Timezone cannot be empty.")
+    try:
+        ZoneInfo(cleaned)
+    except Exception as exc:
+        raise ValueError(f"Unknown timezone '{cleaned}'. Use a valid IANA timezone like 'Asia/Colombo'.") from exc
+    return cleaned
+
+
+def normalize_clock_time(value: str | None, *, field_name: str) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return ""
+    if not _CLOCK_RE.match(cleaned):
+        raise ValueError(f"{field_name} must use 24-hour HH:MM format.")
+    return cleaned
+
+
+def normalize_optional_bool(value: bool | None) -> bool | None:
+    """Normalize optional boolean flags without coercing absent values."""
+    if value is None:
+        return None
+    return bool(value)
 
 
 def _default_setup_payload(token: str, *, ttl_hours: int) -> dict[str, Any]:
@@ -95,6 +126,17 @@ def _default_setup_payload(token: str, *, ttl_hours: int) -> dict[str, Any]:
             "phase1": {},
             "phase2": {},
         },
+    }
+
+
+def _default_runtime_payload() -> dict[str, Any]:
+    return {
+        "last_user_message_at": "",
+        "last_user_local_date": "",
+        "last_morning_checkin_sent_local_date": "",
+        "last_weekly_summary_sent_iso_week": "",
+        "last_proactive_delivery_at": "",
+        "last_proactive_source": "",
     }
 
 
@@ -152,6 +194,31 @@ def _parse_timestamp(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
     except ValueError:
         return None
+
+
+def _coerce_local_now(
+    *,
+    timezone: str,
+    now: datetime | None = None,
+) -> datetime:
+    base = now or _utcnow()
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=UTC)
+    try:
+        tz = ZoneInfo(timezone or "UTC")
+    except Exception:
+        tz = ZoneInfo("UTC")
+    return base.astimezone(tz)
+
+
+def _local_date_string(*, timezone: str, now: datetime | None = None) -> str:
+    return _coerce_local_now(timezone=timezone, now=now).strftime("%Y-%m-%d")
+
+
+def _iso_week_string(*, timezone: str, now: datetime | None = None) -> str:
+    local_now = _coerce_local_now(timezone=timezone, now=now)
+    iso_year, iso_week, _ = local_now.isocalendar()
+    return f"{iso_year}-W{iso_week:02d}"
 
 
 def _derive_fernet_key(secret: str) -> bytes:
@@ -220,6 +287,7 @@ class HealthWorkspace:
         self.invites_path = self.health_dir / _INVITES_NAME
         self.setup_path = self.health_dir / _SETUP_NAME
         self.setup_secrets_path = self.health_dir / _SETUP_SECRETS_NAME
+        self.runtime_path = self.health_dir / _RUNTIME_NAME
 
     @property
     def enabled(self) -> bool:
@@ -236,6 +304,77 @@ class HealthWorkspace:
             json.dumps(profile, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
+
+    def load_runtime(self) -> dict[str, Any]:
+        if not self.runtime_path.exists():
+            return _default_runtime_payload()
+        try:
+            raw = json.loads(self.runtime_path.read_text(encoding="utf-8"))
+        except Exception:
+            return _default_runtime_payload()
+        if not isinstance(raw, dict):
+            return _default_runtime_payload()
+        return _merge_dict(_default_runtime_payload(), raw)
+
+    def save_runtime(self, payload: dict[str, Any]) -> dict[str, Any]:
+        ensure_dir(self.health_dir)
+        normalized = _merge_dict(_default_runtime_payload(), payload)
+        self.runtime_path.write_text(
+            json.dumps(normalized, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return normalized
+
+    def refresh_workspace_assets(self, *, include_memory: bool = False) -> None:
+        profile = self.load_profile()
+        if not profile:
+            return
+        from nanobot.health.bootstrap import refresh_health_workspace_assets
+
+        refresh_health_workspace_assets(
+            self.workspace,
+            profile,
+            include_memory=include_memory,
+        )
+
+    def record_user_activity(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        profile = self.load_profile() or {}
+        timezone = str(profile.get("timezone") or "UTC").strip() or "UTC"
+        runtime = self.load_runtime()
+        current = (now or _utcnow()).astimezone(UTC)
+        runtime["last_user_message_at"] = _isoformat(current)
+        runtime["last_user_local_date"] = _local_date_string(timezone=timezone, now=current)
+        return self.save_runtime(runtime)
+
+    def record_proactive_delivery(
+        self,
+        *,
+        source: str,
+        now: datetime | None = None,
+        morning_checkin_sent: bool = False,
+        weekly_summary_sent: bool = False,
+    ) -> dict[str, Any]:
+        profile = self.load_profile() or {}
+        timezone = str(profile.get("timezone") or "UTC").strip() or "UTC"
+        current = (now or _utcnow()).astimezone(UTC)
+        runtime = self.load_runtime()
+        runtime["last_proactive_delivery_at"] = _isoformat(current)
+        runtime["last_proactive_source"] = str(source or "").strip()
+        if morning_checkin_sent:
+            runtime["last_morning_checkin_sent_local_date"] = _local_date_string(
+                timezone=timezone,
+                now=current,
+            )
+        if weekly_summary_sent:
+            runtime["last_weekly_summary_sent_iso_week"] = _iso_week_string(
+                timezone=timezone,
+                now=current,
+            )
+        return self.save_runtime(runtime)
 
     def load_vault(self, *, secret: str | None = None) -> dict[str, Any] | None:
         if not self.vault_path.exists():
@@ -275,6 +414,84 @@ class HealthWorkspace:
         contact["preferred_name"] = cleaned
         self.save_vault(vault, secret=secret)
         return cleaned
+
+    def update_profile(
+        self,
+        *,
+        timezone: str | None = None,
+        location: str | None = None,
+        wake_time: str | None = None,
+        sleep_time: str | None = None,
+        preferred_name: str | None = None,
+        preferred_channel: str | None = None,
+        proactive_enabled: bool | None = None,
+        voice_preferred: bool | None = None,
+        last_seen_local_date: str | None = None,
+        secret: str | None = None,
+    ) -> dict[str, Any]:
+        profile = self.load_profile()
+        if not profile:
+            raise ValueError("Health profile not found.")
+
+        changed: dict[str, Any] = {}
+
+        if timezone is not None:
+            cleaned = validate_health_timezone(timezone)
+            profile["timezone"] = cleaned
+            changed["timezone"] = cleaned
+
+        if location is not None:
+            cleaned = " ".join(str(location).strip().split())
+            profile["location"] = cleaned
+            changed["location"] = cleaned
+            vault = self.load_vault(secret=secret) or {}
+            contact = vault.setdefault("contact", {})
+            contact["location"] = cleaned
+            self.save_vault(vault, secret=secret)
+
+        routines = profile.setdefault("routines", {})
+        if wake_time is not None:
+            cleaned = normalize_clock_time(wake_time, field_name="wake_time")
+            routines["wake_time"] = cleaned
+            changed["wake_time"] = cleaned
+        if sleep_time is not None:
+            cleaned = normalize_clock_time(sleep_time, field_name="sleep_time")
+            routines["sleep_time"] = cleaned
+            changed["sleep_time"] = cleaned
+
+        if preferred_channel is not None:
+            cleaned = str(preferred_channel or "").strip().lower()
+            if cleaned not in {"telegram", "whatsapp"}:
+                raise ValueError("preferred_channel must be either 'telegram' or 'whatsapp'.")
+            profile["preferred_channel"] = cleaned
+            profile.setdefault("channel_binding", {})["preferred_channel"] = cleaned
+            changed["preferred_channel"] = cleaned
+
+        if preferred_name is not None:
+            cleaned = self.save_preferred_name(preferred_name, secret=secret)
+            changed["preferred_name"] = cleaned
+
+        if proactive_enabled is not None:
+            cleaned = normalize_optional_bool(proactive_enabled)
+            profile["proactive_enabled"] = cleaned
+            changed["proactive_enabled"] = cleaned
+
+        if voice_preferred is not None:
+            cleaned = normalize_optional_bool(voice_preferred)
+            profile["voice_preferred"] = cleaned
+            changed["voice_preferred"] = cleaned
+
+        if last_seen_local_date is not None:
+            cleaned = " ".join(str(last_seen_local_date or "").strip().split())
+            if cleaned and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", cleaned):
+                raise ValueError("last_seen_local_date must use YYYY-MM-DD format.")
+            profile["last_seen_local_date"] = cleaned
+            changed["last_seen_local_date"] = cleaned
+
+        self.save_profile(profile)
+        if changed:
+            self.refresh_workspace_assets(include_memory=False)
+        return changed
 
     def load_setup(self) -> dict[str, Any] | None:
         if not self.setup_path.exists():
@@ -452,6 +669,15 @@ class HealthWorkspace:
         self.save_setup(setup)
         return setup
 
+    def setup_expired(self) -> bool:
+        setup = self.load_setup()
+        if not setup:
+            return False
+        expires_at = _parse_timestamp(setup.get("expires_at"))
+        if expires_at is None:
+            return False
+        return expires_at < _utcnow()
+
     def setup_url(self, token: str) -> str:
         return f"{get_onboarding_base_url()}/setup/{token}"
 
@@ -474,6 +700,16 @@ class HealthWorkspace:
             return None
         provider_key = secrets_payload.get("provider", {}).get("api_key", "").strip()
         telegram_token = secrets_payload.get("telegram", {}).get("bot_token", "").strip()
+        whatsapp_bridge_url = (
+            os.environ.get("NANOBOT_WHATSAPP_BRIDGE_URL")
+            or os.environ.get("HEALTH_WHATSAPP_BRIDGE_URL")
+            or "ws://whatsapp-bridge:3001"
+        ).strip()
+        whatsapp_bridge_token = (
+            os.environ.get("WHATSAPP_BRIDGE_TOKEN")
+            or os.environ.get("BRIDGE_TOKEN")
+            or ""
+        ).strip()
         channels = setup.get("channels", {})
         return {
             "provider": {
@@ -490,6 +726,8 @@ class HealthWorkspace:
                 "whatsapp": {
                     "enabled": bool(channels.get("whatsapp", {}).get("connected")),
                     "allow_from": ["*"],
+                    "bridge_url": whatsapp_bridge_url,
+                    "bridge_token": whatsapp_bridge_token,
                 },
             },
         }

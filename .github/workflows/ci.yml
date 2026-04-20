@@ -52,6 +52,48 @@ jobs:
           bash -n scripts/prod/notify_telegram.sh
           bash -n scripts/prod/report_incident.sh
 
+      - name: Exercise smoke check script
+        run: |
+          python3 - <<'PY' >/tmp/biomeclaw-smoke-ci.log 2>&1 &
+          import json
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path not in {"/healthz", "/readyz", "/metrics", "/api/admin/status"}:
+                      self.send_response(404)
+                      self.end_headers()
+                      return
+                  body = json.dumps({"status": "ok"}).encode("utf-8")
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+              def log_message(self, *_args):
+                  pass
+
+          HTTPServer(("127.0.0.1", 8765), Handler).serve_forever()
+          PY
+          server_pid=$!
+          trap 'kill "${server_pid}"' EXIT
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8765/healthz >/dev/null; then
+              break
+            fi
+            sleep 0.2
+          done
+          bash scripts/prod/smoke_check.sh --base-url http://127.0.0.1:8765 --out-dir /tmp/biomeclaw-smoke-ci
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          summary = json.loads(Path("/tmp/biomeclaw-smoke-ci/summary.json").read_text(encoding="utf-8"))
+          assert summary["status"] == "ok", summary
+          assert summary["failures"] == [], summary
+          PY
+
       - name: Dry-run production deploy script
         run: bash scripts/prod/deploy.sh --host 127.0.0.1 --base-url http://127.0.0.1 --dry-run --out-dir /tmp/biomeclaw-deploy-dry-run
 

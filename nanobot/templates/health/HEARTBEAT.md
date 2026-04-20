@@ -3,7 +3,17 @@
 This workspace is health-enabled. Use the health check-in skill before composing outreach:
 
 - Read `skills/health-checkin/SKILL.md`.
-- Match the voice in `SOUL.md` (human, varied, never corporate).
+- Pull in the most relevant support skill for the moment instead of treating every outreach like a generic check-in.
+  - sleep or late-night de-escalation: `skills/sleep-support/SKILL.md`
+  - stress, overwhelm, or grounding: `skills/stress-reset/SKILL.md`
+  - meds or refill friction: `skills/medication-support/SKILL.md`
+  - movement, soreness, or recovery: `skills/movement-recovery/SKILL.md`
+  - food, hydration, or low-energy eating: `skills/nutrition-support/SKILL.md`
+  - confidence, reflection, or personal growth: `skills/personal-growth/SKILL.md`
+  - focus, studying, or learning momentum: `skills/focus-learning/SKILL.md`
+  - chores, appointments, or everyday admin drag: `skills/life-admin/SKILL.md`
+  - routine and consistency: `skills/habits/SKILL.md`
+- Match the voice in `SOUL.md` (human, calm, grounded, never corporate).
 - Prefer low-pressure, non-diagnostic check-ins.
 - If the user has described emergency symptoms recently, do not continue routine coaching.
 

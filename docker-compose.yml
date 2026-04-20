@@ -5,11 +5,17 @@ x-common-config: &common-config
     context: .
     dockerfile: Dockerfile
   volumes:
-    - ~/.nanobot:/home/nanobot/.nanobot
+    - ${NANOBOT_STATE_DIR:-~/.nanobot}:/home/nanobot/.nanobot
   environment: &common-env
     MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+    OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    GROQ_API_KEY: ${GROQ_API_KEY:-}
     HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
     HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
+    HEALTH_TELEGRAM_BOT_URL: ${HEALTH_TELEGRAM_BOT_URL:-}
+    HEALTH_WHATSAPP_CHAT_URL: ${HEALTH_WHATSAPP_CHAT_URL:-}
+    HEALTH_WHATSAPP_BRIDGE_URL: ${HEALTH_WHATSAPP_BRIDGE_URL:-ws://whatsapp-bridge:3001}
+    WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
     APP_RELEASE: ${APP_RELEASE:-}
     APP_DEPLOYED_AT: ${APP_DEPLOYED_AT:-}
   cap_drop:
@@ -49,6 +55,7 @@ services:
 
   orchestrator:
     <<: *common-config
+    image: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-biomeclaw-orchestrator:latest}
     container_name: biomeclaw-orchestrator
     depends_on:
       - postgres
@@ -60,7 +67,7 @@ services:
     entrypoint: ["python", "-m", "uvicorn"]
     command: ["nanobot.health.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
     volumes:
-      - ~/.nanobot:/home/nanobot/.nanobot
+      - ${NANOBOT_STATE_DIR:-~/.nanobot}:/home/nanobot/.nanobot
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       <<: *common-env
@@ -68,11 +75,11 @@ services:
       HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
       HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
       NANOBOT_WORKSPACE: /home/nanobot/.nanobot/workspace
-      NANOBOT_HEALTH_INSTANCE_IMAGE: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-nanobot-orchestrator:latest}
+      NANOBOT_HEALTH_INSTANCE_IMAGE: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-biomeclaw-orchestrator:latest}
       NANOBOT_HEALTH_REGISTRY_URL: ${NANOBOT_HEALTH_REGISTRY_URL:-postgresql://nanohealth:${POSTGRES_PASSWORD:-nanohealth}@postgres:5432/nanohealth}
       ARQ_REDIS_URL: ${ARQ_REDIS_URL:-redis://redis:6379/0}
     ports:
-      - "8080:8080"
+      - "${HEALTH_HTTP_PORT:-8080}:8080"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/healthz || exit 1"]
@@ -91,8 +98,8 @@ services:
     depends_on:
       - orchestrator
     ports:
-      - "80:80"
-      - "443:443"
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
     environment:
       DOMAIN: ${DOMAIN}
     volumes:
@@ -114,7 +121,7 @@ services:
       - redis
     entrypoint: ["python", "-m", "nanobot.health.worker"]
     volumes:
-      - ~/.nanobot:/home/nanobot/.nanobot
+      - ${NANOBOT_STATE_DIR:-~/.nanobot}:/home/nanobot/.nanobot
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       <<: *common-env
@@ -122,10 +129,30 @@ services:
       HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
       HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
       NANOBOT_WORKSPACE: /home/nanobot/.nanobot/workspace
-      NANOBOT_HEALTH_INSTANCE_IMAGE: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-nanobot-orchestrator:latest}
+      NANOBOT_HEALTH_INSTANCE_IMAGE: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-biomeclaw-orchestrator:latest}
       NANOBOT_HEALTH_REGISTRY_URL: ${NANOBOT_HEALTH_REGISTRY_URL:-postgresql://nanohealth:${POSTGRES_PASSWORD:-nanohealth}@postgres:5432/nanohealth}
       ARQ_REDIS_URL: ${ARQ_REDIS_URL:-redis://redis:6379/0}
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  whatsapp-bridge:
+    <<: *common-config
+    container_name: biomeclaw-whatsapp-bridge
+    depends_on:
+      - orchestrator
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - "cd /app/bridge && AUTH_DIR=/home/nanobot/.nanobot/whatsapp-auth BRIDGE_HOST=0.0.0.0 BRIDGE_PORT=3001 npm start"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 3001)); s.close()\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
     logging:
       driver: json-file
       options:

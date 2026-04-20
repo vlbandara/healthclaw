@@ -110,6 +110,8 @@ def test_onboard_get_and_submit_flow(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert page.status_code == 200
     assert "Let’s make this feel like your space." in page.text
     assert "Back to Telegram" in page.text
+    assert "Your timezone" in page.text
+    assert "change it later in chat" in page.text
 
     resp = client.post(f"/api/onboard/{invite}/submit", json=_minimal_payload())
     assert resp.status_code == 200
@@ -152,7 +154,8 @@ def test_onboard_regeneration_is_idempotent(tmp_path: Path, monkeypatch: pytest.
 
     assert resp.status_code == 200
     profile = json.loads((tmp_path / "health" / "profile.json").read_text(encoding="utf-8"))
-    assert profile["user_token"] == "USER-001"
+    assert profile["user_token"].startswith("U-")
+    assert profile["user_token"] != "USER-001"
     assert profile["goals"] == ["improve sleep", "walk daily"]
 
 
@@ -169,3 +172,15 @@ def test_onboard_accepts_reduced_story_payload(tmp_path: Path, monkeypatch: pyte
     assert profile["preferences"]["reminder_preferences"] == ["Warm, gentle nudges"]
     vault_ciphertext = (tmp_path / "health" / "vault.json.enc").read_text(encoding="utf-8")
     assert "Sam Rivera" not in vault_ciphertext
+
+
+def test_onboard_rejects_invalid_timezone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, health = _make_client(tmp_path, monkeypatch)
+    invite, _ = health.create_invite(channel="telegram", chat_id="123")
+    payload = _minimal_payload("Sam Rivera")
+    payload["phase1"]["timezone"] = "Mars/OlympusMons"
+
+    response = client.post(f"/api/onboard/{invite}/submit", json=payload)
+
+    assert response.status_code == 422
+    assert "Unknown timezone" in response.text

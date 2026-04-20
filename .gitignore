@@ -2,6 +2,9 @@
 .assets
 .docs
 .env
+.env.local
+.env.prod
+.local/
 .web
 *.pyc
 dist/

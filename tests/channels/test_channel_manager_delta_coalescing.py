@@ -296,3 +296,28 @@ class TestDispatchOutboundWithCoalescing:
         # Should have pending regular message
         assert len(pending) == 1
         assert pending[0].content == "Final"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_skips_internal_visibility_for_external_channels(self, manager, bus):
+        dispatch = asyncio.create_task(manager._dispatch_outbound())
+        try:
+            await bus.publish_outbound(OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="hidden progress",
+                metadata={"_progress": True},
+                visibility="internal",
+            ))
+            await bus.publish_outbound(OutboundMessage(
+                channel="mock",
+                chat_id="chat1",
+                content="visible reply",
+            ))
+            await asyncio.sleep(0.05)
+        finally:
+            dispatch.cancel()
+            await dispatch
+
+        manager.channels["mock"]._send_mock.assert_called_once()
+        sent = manager.channels["mock"]._send_mock.await_args.args[0]
+        assert sent.content == "visible reply"

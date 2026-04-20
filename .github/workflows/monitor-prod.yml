@@ -66,6 +66,8 @@ jobs:
           subsystem = "runtime"
           if first.startswith("endpoint:"):
               subsystem = "api"
+          elif first.startswith("host:"):
+              subsystem = "host"
           elif "log_pattern" in first:
               subsystem = "logs"
           elif "compose" in first:

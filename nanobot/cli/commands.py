@@ -541,6 +541,7 @@ def serve(
         mcp_servers=runtime_config.tools.mcp_servers,
         channels_config=runtime_config.channels,
         timezone=runtime_config.agents.defaults.timezone,
+        runtime_config=runtime_config,
     )
 
     model_name = runtime_config.agents.defaults.model
@@ -669,16 +670,13 @@ def gateway(
                             async def _silent(*_a, **_k) -> None:
                                 pass
 
-                            resp = await t.loop.process_direct(
+                            resp = await t.loop.process_internal(
                                 tasks,
-                                session_key="heartbeat",
+                                session_key=f"{ch}:{cid}",
                                 channel=ch,
                                 chat_id=cid,
                                 on_progress=_silent,
                             )
-                            sess = t.loop.sessions.get_or_create("heartbeat")
-                            sess.retain_recent_legal_suffix(hb_cfg.keep_recent_messages)
-                            t.loop.sessions.save(sess)
                             return resp.content if resp else ""
 
                         async def on_no(response: str, t=tenant) -> None:
@@ -778,6 +776,7 @@ def gateway(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         timezone=config.agents.defaults.timezone,
+        runtime_config=config,
     )
 
     # Set cron callback (needs agent)
@@ -852,23 +851,19 @@ def gateway(
     async def on_heartbeat_execute(tasks: str) -> str:
         """Phase 2: execute heartbeat tasks through the full agent loop."""
         channel, chat_id = _pick_heartbeat_target()
+        if channel == "cli":
+            return ""
 
         async def _silent(*_args, **_kwargs):
             pass
 
-        resp = await agent.process_direct(
+        resp = await agent.process_internal(
             tasks,
-            session_key="heartbeat",
+            session_key=f"{channel}:{chat_id}",
             channel=channel,
             chat_id=chat_id,
             on_progress=_silent,
         )
-
-        # Keep a small tail of heartbeat history so the loop stays bounded
-        # without losing all short-term context between runs.
-        session = agent.sessions.get_or_create("heartbeat")
-        session.retain_recent_legal_suffix(hb_cfg.keep_recent_messages)
-        agent.sessions.save(session)
 
         return resp.content if resp else ""
 
@@ -880,7 +875,7 @@ def gateway(
             return  # No external channel available to deliver to
         await bus.publish_outbound(OutboundMessage(channel=channel, chat_id=chat_id, content=response))
 
-    heartbeat = HeartbeatService(
+    heartbeat: HeartbeatService | None = HeartbeatService(
         workspace=config.workspace_path,
         provider=provider,
         model=agent.model,
@@ -998,6 +993,7 @@ def agent(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         timezone=config.agents.defaults.timezone,
+        runtime_config=config,
     )
     restart_notice = consume_restart_notice_from_env()
     if restart_notice and should_show_cli_restart_notice(restart_notice, session_id):

@@ -19,7 +19,9 @@ const toggleSummary = document.getElementById("toggle-summary");
 const timezonePill = document.getElementById("timezone-pill");
 const finalSummaryName = document.getElementById("final-summary-name");
 const finalSummaryLocation = document.getElementById("final-summary-location");
+const finalSummaryTimezone = document.getElementById("final-summary-timezone");
 const finalSummaryStyle = document.getElementById("final-summary-style");
+const timezoneInput = form?.querySelector('[name="timezone"]');
 
 const SCENES = [
   { label: "Step 1 of 3", hint: "Choose what you want help with.", mood: "happy" },
@@ -85,6 +87,7 @@ const TONE_OPTIONS = {
 
 let currentCard = 0;
 const totalCards = cardSteps.length;
+const detectedTimezone = detectTimezone();
 
 function parseLines(value) {
   return (value || "")
@@ -109,6 +112,10 @@ function typedLocation() {
   return form.querySelector('[name="location"]')?.value.trim() || "";
 }
 
+function typedTimezone() {
+  return timezoneInput?.value.trim() || detectedTimezone;
+}
+
 function detectTimezone() {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -124,6 +131,13 @@ function detectLanguage() {
   } catch (e) {
     return "en";
   }
+}
+
+function seedTimezoneField() {
+  if (!timezoneInput || String(timezoneInput.value || "").trim()) {
+    return;
+  }
+  timezoneInput.value = detectedTimezone;
 }
 
 function updateStepDots() {
@@ -221,14 +235,17 @@ function updateTonePreview() {
 }
 
 function updateLocationPreview() {
-  const timezone = detectTimezone();
+  seedTimezoneField();
+  const timezone = typedTimezone();
   const location = typedLocation();
   const name = typedName();
   const tone = selectedTone();
   const focuses = selectedCareFocuses();
 
   if (timezonePill) {
-    timezonePill.textContent = `Using your local time: ${timezone}`;
+    timezonePill.textContent = timezone === detectedTimezone
+      ? `Detected here: ${detectedTimezone}`
+      : `Detected here: ${detectedTimezone}. Using: ${timezone}`;
   }
   if (finalSummaryName) {
     finalSummaryName.textContent = name
@@ -237,8 +254,11 @@ function updateLocationPreview() {
   }
   if (finalSummaryLocation) {
     finalSummaryLocation.textContent = location
-      ? `${location} is your anchor, and timing will follow your local day.`
-      : `Timing will follow your local day in ${timezone}.`;
+      ? `${location} is your anchor, and reminders will land in the right part of the day.`
+      : "Timing will follow the day you set here.";
+  }
+  if (finalSummaryTimezone) {
+    finalSummaryTimezone.textContent = `Timezone: ${timezone}. You can change it later if your schedule moves.`;
   }
   if (finalSummaryStyle) {
     const focusLabels = focuses.map((key) => formatFocusLabel(key));
@@ -321,7 +341,7 @@ function collectPhase1Payload() {
     location: typedLocation(),
     email: "",
     phone: "",
-    timezone: detectTimezone(),
+    timezone: typedTimezone(),
     language: detectLanguage(),
     preferred_channel: preferredChannel,
     age_range: "not set",
@@ -451,5 +471,6 @@ form.addEventListener("submit", async (event) => {
 });
 
 syncPreferredChannelWithInvite();
+seedTimezoneField();
 updateStep();
 updatePreviews();

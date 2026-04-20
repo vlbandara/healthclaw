@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -40,10 +41,11 @@ def _string_list_or_fallback(values: list[str], fallback: str) -> str:
     return ", ".join(cleaned) if cleaned else fallback
 
 
-def _render_heartbeat(profile: dict[str, Any]) -> str:
+def render_health_heartbeat(profile: dict[str, Any]) -> str:
     prefs = profile.get("preferences", {})
-    wake_time = prefs.get("wake_time") or "07:00"
-    sleep_time = prefs.get("sleep_time") or "22:30"
+    routines = profile.get("routines", {})
+    wake_time = routines.get("wake_time") or "07:00"
+    sleep_time = routines.get("sleep_time") or "22:30"
     reminder_windows = _clean_list(prefs.get("medication_reminder_windows"))
     goals = _clean_list(profile.get("goals"))
     concerns = profile.get("current_concerns") or "No current concern was provided during onboarding."
@@ -59,70 +61,144 @@ def _render_heartbeat(profile: dict[str, Any]) -> str:
     )
 
 
+def render_health_user(profile: dict[str, Any]) -> str:
+    demographics = profile.get("demographics", {})
+    routines = profile.get("routines", {})
+    preferences = profile.get("preferences", {})
+    friction_points = profile.get("friction_points") or []
+    communication_preferences = profile.get("communication_preferences") or []
+    return render_template(
+        "health/USER.md",
+        user_token=profile.get("user_token", "USER-001"),
+        location=profile.get("location", "not set"),
+        timezone=profile.get("timezone", "UTC"),
+        language=profile.get("language", "en"),
+        preferred_channel=profile.get("preferred_channel", "telegram"),
+        age_range=demographics.get("age_range", "not set"),
+        sex=demographics.get("sex", "not set"),
+        gender=demographics.get("gender", "not set"),
+        height_cm=demographics.get("height_cm", "not set"),
+        weight_kg=demographics.get("weight_kg", "not set"),
+        known_conditions=_bullet_lines(
+            demographics.get("known_conditions"),
+            "No known conditions were disclosed.",
+        ),
+        medications=_bullet_lines(
+            demographics.get("medications"),
+            "No active medications were disclosed.",
+        ),
+        allergies=_bullet_lines(
+            demographics.get("allergies"),
+            "No allergies were disclosed.",
+        ),
+        goals=_bullet_lines(profile.get("goals"), "Goals still need to be refined."),
+        current_concerns=profile.get("current_concerns") or "No current concerns were recorded.",
+        reminder_preferences=_string_list_or_fallback(
+            preferences.get("reminder_preferences"),
+            "No reminder preferences were specified.",
+        ),
+        wake_time=routines.get("wake_time", "not set"),
+        sleep_time=routines.get("sleep_time", "not set"),
+        friction_points=_bullet_lines(
+            friction_points,
+            "No durable friction points recorded yet.",
+        ),
+        communication_preferences=_bullet_lines(
+            communication_preferences,
+            "No explicit communication preferences recorded yet.",
+        ),
+    )
+
+
+def render_health_memory(profile: dict[str, Any]) -> str:
+    screenings = profile.get("screenings", {})
+    return render_template(
+        "health/memory/MEMORY.md",
+        mood_interest=screenings.get("mood_interest", 0),
+        mood_down=screenings.get("mood_down", 0),
+        activity_level=profile.get("wellbeing", {}).get("activity_level", "not set"),
+        nutrition_quality=profile.get("wellbeing", {}).get("nutrition_quality", "not set"),
+        sleep_quality=profile.get("wellbeing", {}).get("sleep_quality", "not set"),
+        stress_level=profile.get("wellbeing", {}).get("stress_level", "not set"),
+        last_open_loop=profile.get("last_open_loop", "none"),
+    )
+
+
+def refresh_health_workspace_assets(
+    workspace: Path,
+    profile: dict[str, Any],
+    *,
+    include_memory: bool = False,
+) -> None:
+    """Refresh rendered health workspace files derived from the saved profile."""
+    ensure_dir(workspace)
+    ensure_dir(workspace / "memory")
+    files: dict[Path, str] = {
+        workspace / "USER.md": render_health_user(profile),
+        workspace / "HEARTBEAT.md": render_health_heartbeat(profile),
+    }
+    if include_memory:
+        files[workspace / "memory" / "MEMORY.md"] = render_health_memory(profile)
+
+    for path, content in files.items():
+        path.write_text(content.rstrip() + "\n", encoding="utf-8")
+
+
 def write_health_workspace_assets(workspace: Path, profile: dict[str, Any]) -> None:
     """Render health-specific files into the workspace."""
     ensure_dir(workspace)
     ensure_dir(workspace / "memory")
-    ensure_dir(workspace / "skills" / "health")
-    ensure_dir(workspace / "skills" / "health-checkin")
-    ensure_dir(workspace / "skills" / "habits")
-
-    demographics = profile.get("demographics", {})
-    routines = profile.get("routines", {})
-    screenings = profile.get("screenings", {})
-    preferences = profile.get("preferences", {})
+    skill_names = [
+        "focus-learning",
+        "habits",
+        "health",
+        "health-checkin",
+        "life-admin",
+        "medication-support",
+        "movement-recovery",
+        "nutrition-support",
+        "personal-growth",
+        "sleep-support",
+        "stress-reset",
+    ]
+    for skill_name in skill_names:
+        ensure_dir(workspace / "skills" / skill_name)
 
     files: dict[Path, str] = {
         workspace / "AGENTS.md": render_template("health/AGENTS.md"),
         workspace / "SOUL.md": render_template("health/SOUL.md"),
-        workspace / "USER.md": render_template(
-            "health/USER.md",
-            user_token=profile.get("user_token", "USER-001"),
-            location=profile.get("location", "not set"),
-            timezone=profile.get("timezone", "UTC"),
-            language=profile.get("language", "en"),
-            preferred_channel=profile.get("preferred_channel", "telegram"),
-            age_range=demographics.get("age_range", "not set"),
-            sex=demographics.get("sex", "not set"),
-            gender=demographics.get("gender", "not set"),
-            height_cm=demographics.get("height_cm", "not set"),
-            weight_kg=demographics.get("weight_kg", "not set"),
-            known_conditions=_bullet_lines(
-                demographics.get("known_conditions"),
-                "No known conditions were disclosed.",
-            ),
-            medications=_bullet_lines(
-                demographics.get("medications"),
-                "No active medications were disclosed.",
-            ),
-            allergies=_bullet_lines(
-                demographics.get("allergies"),
-                "No allergies were disclosed.",
-            ),
-            goals=_bullet_lines(profile.get("goals"), "Goals still need to be refined."),
-            current_concerns=profile.get("current_concerns") or "No current concerns were recorded.",
-            reminder_preferences=_string_list_or_fallback(
-                preferences.get("reminder_preferences"),
-                "No reminder preferences were specified.",
-            ),
-            wake_time=routines.get("wake_time", "not set"),
-            sleep_time=routines.get("sleep_time", "not set"),
-        ),
-        workspace / "HEARTBEAT.md": _render_heartbeat(profile),
-        workspace / "memory" / "MEMORY.md": render_template(
-            "health/memory/MEMORY.md",
-            mood_interest=screenings.get("mood_interest", 0),
-            mood_down=screenings.get("mood_down", 0),
-            activity_level=profile.get("wellbeing", {}).get("activity_level", "not set"),
-            nutrition_quality=profile.get("wellbeing", {}).get("nutrition_quality", "not set"),
-            sleep_quality=profile.get("wellbeing", {}).get("sleep_quality", "not set"),
-            stress_level=profile.get("wellbeing", {}).get("stress_level", "not set"),
-        ),
+        workspace / "USER.md": render_health_user(profile),
+        workspace / "HEARTBEAT.md": render_health_heartbeat(profile),
+        workspace / "memory" / "MEMORY.md": render_health_memory(profile),
         workspace / "skills" / "health" / "SKILL.md": render_template("health/skills/health/SKILL.md"),
         workspace / "skills" / "health-checkin" / "SKILL.md": render_template(
             "health/skills/health-checkin/SKILL.md"
         ),
         workspace / "skills" / "habits" / "SKILL.md": render_template("health/skills/habits/SKILL.md"),
+        workspace / "skills" / "sleep-support" / "SKILL.md": render_template(
+            "health/skills/sleep-support/SKILL.md"
+        ),
+        workspace / "skills" / "stress-reset" / "SKILL.md": render_template(
+            "health/skills/stress-reset/SKILL.md"
+        ),
+        workspace / "skills" / "medication-support" / "SKILL.md": render_template(
+            "health/skills/medication-support/SKILL.md"
+        ),
+        workspace / "skills" / "movement-recovery" / "SKILL.md": render_template(
+            "health/skills/movement-recovery/SKILL.md"
+        ),
+        workspace / "skills" / "nutrition-support" / "SKILL.md": render_template(
+            "health/skills/nutrition-support/SKILL.md"
+        ),
+        workspace / "skills" / "personal-growth" / "SKILL.md": render_template(
+            "health/skills/personal-growth/SKILL.md"
+        ),
+        workspace / "skills" / "focus-learning" / "SKILL.md": render_template(
+            "health/skills/focus-learning/SKILL.md"
+        ),
+        workspace / "skills" / "life-admin" / "SKILL.md": render_template(
+            "health/skills/life-admin/SKILL.md"
+        ),
     }
 
     for path, content in files.items():
@@ -188,6 +264,12 @@ def build_profile_payload(submission: dict[str, Any], *, channel: str, user_toke
             ),
             "weekly_summary": bool(phase2.get("weekly_summary", True)),
         },
+        "friction_points": [],
+        "communication_preferences": [],
+        "proactive_enabled": False,
+        "voice_preferred": False,
+        "last_seen_local_date": "",
+        "last_open_loop": "none",
         "channel_binding": {
             "preferred_channel": phase1["preferred_channel"],
             "invite_channel": channel,
@@ -233,22 +315,24 @@ def persist_health_onboarding(
     invite: dict[str, Any] | None = None,
     secret: str | None = None,
     user_token: str | None = None,
+    stable_token_hint: str | None = None,
 ) -> dict[str, Any]:
     """Write profile, encrypted vault, and rendered workspace assets."""
     from nanobot.health.storage import HealthWorkspace
 
     health = HealthWorkspace(workspace)
     existing_profile = health.load_profile() or {}
-    user_token = (
-        user_token
-        or existing_profile.get("user_token")
-        or read_tenant_user_token(workspace)
-        or "USER-001"
-    )
     invite_meta = invite or {
         "channel": submission.get("phase1", {}).get("preferred_channel", ""),
         "chat_id": "",
     }
+    user_token = _resolve_user_token(
+        explicit=user_token,
+        existing=existing_profile.get("user_token"),
+        tenant=read_tenant_user_token(workspace),
+        invite=invite_meta,
+        stable_hint=stable_token_hint,
+    )
     profile = build_profile_payload(
         submission,
         channel=invite_meta.get("channel", ""),
@@ -265,3 +349,23 @@ def persist_health_onboarding(
         except OSError:
             pass
     return profile
+
+
+def _resolve_user_token(
+    *,
+    explicit: str | None,
+    existing: str | None,
+    tenant: str | None,
+    invite: dict[str, Any],
+    stable_hint: str | None,
+) -> str:
+    for candidate in (explicit, existing, tenant, stable_hint):
+        cleaned = str(candidate or "").strip()
+        if cleaned:
+            return cleaned
+    channel = str(invite.get("channel") or "").strip()
+    chat_id = str(invite.get("chat_id") or "").strip()
+    if channel and chat_id:
+        digest = hashlib.sha256(f"{channel}:{chat_id}".encode("utf-8")).hexdigest()[:12]
+        return f"U-{digest}"
+    raise ValueError("Unable to resolve a stable health user token for onboarding.")

@@ -18,6 +18,8 @@ On the local machine:
 - This repo checked out from the future `BiomeClaw` GitHub fork
 - A populated local `.env` file based on `.env.example`
 
+For local-only development on your machine, keep a separate `.env.local` based on [.env.local.example](/Users/vinodhlahiru/Documents/Repos/nanobot/.env.local.example) and do not reuse the production `.env`.
+
 On the server:
 
 - Docker Engine with the Compose plugin installed
@@ -36,6 +38,7 @@ POSTGRES_PASSWORD=...
 HEALTH_ONBOARDING_BASE_URL=https://health.example.com
 HEALTH_TELEGRAM_BOT_URL=https://t.me/your_bot_username
 HEALTH_WHATSAPP_CHAT_URL=
+HEALTH_WHATSAPP_BRIDGE_URL=ws://whatsapp-bridge:3001
 WHATSAPP_BRIDGE_TOKEN=
 ```
 

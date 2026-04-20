@@ -37,6 +37,10 @@ class ContextBuilder:
         if memory:
             parts.append(f"# Memory\n\n{memory}")
 
+        interests = self.memory.get_interest_context()
+        if interests:
+            parts.append(f"# Hidden Interests\n\n{interests}")
+
         always_skills = self.skills.get_always_skills()
         if always_skills:
             always_content = self.skills.load_skills_for_context(always_skills)
@@ -55,7 +59,7 @@ class ContextBuilder:
         system = platform.system()
         runtime = f"{'macOS' if system == 'Darwin' else system} {platform.machine()}, Python {platform.python_version()}"
         assistant_identity = (
-            "BiomeClaw, a sharp health coach with a real personality."
+            "BiomeClaw, a calm and grounded health coach with a real personality."
             if is_health_workspace(self.workspace)
             else "nanobot, a helpful AI assistant."
         )

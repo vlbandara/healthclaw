@@ -34,6 +34,10 @@ This workspace is health-enabled. Raw identifiers live only in the encrypted vau
 
 {{ goals }}
 
+## Friction Points
+
+{{ friction_points }}
+
 ## Current Concerns
 
 {{ current_concerns }}
@@ -43,3 +47,7 @@ This workspace is health-enabled. Raw identifiers live only in the encrypted vau
 - Wake time: {{ wake_time }}
 - Sleep time: {{ sleep_time }}
 - Reminder preferences: {{ reminder_preferences }}
+
+## Communication Preferences
+
+{{ communication_preferences }}

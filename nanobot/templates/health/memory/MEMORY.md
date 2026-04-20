@@ -31,5 +31,6 @@ This file stores durable, pseudonymized health observations.
 - Streak: 0 days
 - Last mood trend: stable
 - Trust level: probing
+- Last open loop: {{ last_open_loop }}
 
 Dream should advance **Stage** (onboarding → early → settling → established → deep) when conversation depth and days support it; update counts conservatively from session patterns.

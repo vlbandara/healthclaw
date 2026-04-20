@@ -21,6 +21,7 @@ This repo uses a GitHub-first production loop for the Hetzner deployment.
 ## Production Scripts
 
 - `scripts/prod/deploy.sh`: safe rsync-based deploy. Server `.env` remains authoritative.
+- `scripts/prod/deploy.sh` now refuses named branches other than `main` unless `ALLOW_NON_MAIN_DEPLOY=1` is set deliberately.
 - `scripts/prod/smoke_check.sh`: endpoint and container health verification.
 - `scripts/prod/collect_diagnostics.sh`: gathers endpoint responses, compose status, logs, and Docker state.
 - `scripts/prod/notify_telegram.sh`: sends production alerts.

@@ -172,7 +172,7 @@
                 <div class="story-scene__copy">
                   <p class="scene-kicker">Final step</p>
                   <h2>Keep it local</h2>
-                  <p class="scene-lede">Tell me what to call you and where you are. I’ll use local time so messages land at the right moment.</p>
+                  <p class="scene-lede">Tell me what to call you, where you are, and which timezone should drive your reminders. We detect local time here, but you can edit it now and change it later in chat.</p>
                   <div class="story-form-grid">
                     <label class="tap-field">
                       <span>Your name</span>
@@ -182,8 +182,13 @@
                       <span>Your location</span>
                       <input name="location" required autocomplete="address-level2" placeholder="Colombo, Sri Lanka" />
                     </label>
+                    <label class="tap-field">
+                      <span>Your timezone</span>
+                      <input name="timezone" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Asia/Colombo" />
+                      <small class="field-hint">We fill this from your browser first. Edit it if you travel, work odd hours, or want another timezone.</small>
+                    </label>
                   </div>
-                  <div class="time-pill" id="timezone-pill">Using your local time: detecting…</div>
+                  <div class="time-pill" id="timezone-pill">Detected here: checking your local time…</div>
                   <p class="tap-disclaimer">This is wellbeing support, not medical or emergency care.</p>
                 </div>
 
@@ -193,6 +198,7 @@
                     <div class="story-summary story-summary--soft">
                       <p id="final-summary-name" class="story-summary__line">You’ll be greeted by name.</p>
                       <p id="final-summary-location" class="story-summary__line">Timing will follow your local day.</p>
+                      <p id="final-summary-timezone" class="story-summary__line">Timezone is detected automatically and can change later.</p>
                       <p id="final-summary-style" class="story-summary__line">Tone and focus can keep evolving.</p>
                     </div>
                   </div>

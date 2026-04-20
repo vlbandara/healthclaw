@@ -27,6 +27,7 @@
  */
 const form = document.getElementById("signup-form");
 const statusNode = document.getElementById("signup-status");
+const SETUP_TOKEN_KEY = "nanobot-health-setup-token";
 
 if (form && statusNode) {
   function detectTimezone() {
@@ -59,6 +60,13 @@ if (form && statusNode) {
       const name = form.querySelector('[name="name"]').value.trim();
       const timezoneField = form.querySelector('[name="timezone"]');
       const timezone = (timezoneField?.value || "").trim() || detectTimezone();
+      const resumeSetupToken = (() => {
+        try {
+          return window.localStorage.getItem(SETUP_TOKEN_KEY) || "";
+        } catch (e) {
+          return "";
+        }
+      })();
       if (timezoneField) {
         timezoneField.value = timezone;
       }
@@ -66,10 +74,15 @@ if (form && statusNode) {
       const data = await fetchJson("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, timezone }),
+        body: JSON.stringify({ name, timezone, resumeSetupToken }),
       });
       if (!data.setupToken) {
         throw new Error("Missing setup token.");
+      }
+      try {
+        window.localStorage.setItem(SETUP_TOKEN_KEY, data.setupToken);
+      } catch (e) {
+        // Ignore storage failures.
       }
       window.location.href = `/setup/${encodeURIComponent(data.setupToken)}`;
     } catch (error) {
