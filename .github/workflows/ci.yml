@@ -129,3 +129,6 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests/
+
+      - name: Smoke evals
+        run: uv run nanobot eval run --dataset smoke

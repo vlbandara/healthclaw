@@ -1,0 +1,4 @@
+{"id":"smoke-1","tenant_external_id":"eval-user","session_key":"api:eval","input":"Say 'pong' only.","expected_contains":"pong","tags":["format"]}
+{"id":"smoke-2","tenant_external_id":"eval-user","session_key":"api:eval","input":"Remember: my dog's name is Max.","expected_contains":"Max","tags":["memory"]}
+{"id":"smoke-3","tenant_external_id":"eval-user","session_key":"api:eval","input":"What is my dog's name?","expected_contains":"Max","tags":["memory"]}
+

@@ -1,0 +1,55 @@
+name: nanobot-platform
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nanobot
+      POSTGRES_USER: nanobot
+      POSTGRES_PASSWORD: nanobot
+    ports:
+      - "5432:5432"
+    volumes:
+      - platform_pg_data:/var/lib/postgresql/data
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["nanobot", "serve", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      NANOBOT_DATABASE_URL: postgresql://nanobot:nanobot@postgres:5432/nanobot
+      ARQ_REDIS_URL: redis://redis:6379/0
+      NANOBOT_API_KEY: ${NANOBOT_API_KEY:-}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+      - postgres
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["nanobot", "worker"]
+    environment:
+      NANOBOT_DATABASE_URL: postgresql://nanobot:nanobot@postgres:5432/nanobot
+      ARQ_REDIS_URL: redis://redis:6379/0
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  platform_pg_data:
+

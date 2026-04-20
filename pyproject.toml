@@ -58,6 +58,13 @@ dependencies = [
     "docker>=7.0.0,<8.0.0",
     "arq>=0.26.0,<1.0.0",
     "qrcode[pil]>=8.0",
+    "alembic>=1.16.0,<2.0.0",
+    "SQLAlchemy>=2.0.0,<3.0.0",
+    "prometheus-client>=0.22.0,<1.0.0",
+    "redis[hiredis]>=4.2.0,<6.0.0",
+    "slowapi>=0.1.9,<1.0.0",
+    "langfuse>=3.0.0,<4.0.0",
+    "mem0ai>=1.0.0,<2.0.0",
 ]
 
 [project.optional-dependencies]

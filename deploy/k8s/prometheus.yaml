@@ -1,0 +1,6 @@
+# Placeholder manifest. In production use kube-prometheus-stack (Helm).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+

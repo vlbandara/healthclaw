@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nanobot-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nanobot-postgres
+  template:
+    metadata:
+      labels:
+        app: nanobot-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: nanobot
+            - name: POSTGRES_USER
+              value: nanobot
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nanobot-secrets
+                  key: postgres_password
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nanobot-postgres
+spec:
+  selector:
+    app: nanobot-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+

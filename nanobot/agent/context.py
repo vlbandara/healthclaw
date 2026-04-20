@@ -206,3 +206,42 @@ class ContextBuilder:
             thinking_blocks=thinking_blocks,
         ))
         return messages
+
+    # ---------------------------------------------------------------------
+    # Platform-mode helpers (async, repository-backed)
+    # ---------------------------------------------------------------------
+
+    async def build_system_prompt_from_repo(
+        self,
+        *,
+        tenant_id: str,
+        memory_repo: "Any",
+        skill_names: list[str] | None = None,
+    ) -> str:
+        """Build a system prompt using a MemoryRepository instead of workspace files.
+
+        This keeps local/dev behavior unchanged while enabling stateless platform workers.
+        """
+        parts = [self._get_identity()]
+
+        soul = await memory_repo.get_document(tenant_id, "SOUL")
+        user = await memory_repo.get_document(tenant_id, "USER")
+        memory = await memory_repo.get_document(tenant_id, "MEMORY")
+        interests = await memory_repo.get_document(tenant_id, "INTERESTS")
+
+        bootstrap = []
+        for filename, content in (("SOUL.md", soul), ("USER.md", user)):
+            if (content or "").strip():
+                bootstrap.append(f"## {filename}\n\n{content}")
+        if bootstrap:
+            parts.append("\n\n".join(bootstrap))
+
+        if (memory or "").strip():
+            parts.append(f"# Memory\n\n{memory}")
+        if (interests or "").strip():
+            parts.append(f"# Hidden Interests\n\n{interests}")
+
+        # Skills are still workspace-backed; leave as-is for now.
+        # Platform mode will move skills to a repo backend later.
+        return "\n\n---\n\n".join(parts)
+
