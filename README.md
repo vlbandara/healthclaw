@@ -1,25 +1,17 @@
 <div align="center">
-  <img src="nanobot_logo.png" alt="Healthclaw" width="200">
-  <h1>Healthclaw</h1>
-  <p><strong>Private wellbeing companion that learns your rhythm.</strong></p>
-  <p>
-    <img src="https://img.shields.io/badge/python-≥3.11-blue" alt="Python">
-    <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-    <img src="https://img.shields.io/badge/local--first-Ollama%20%2B%20Gemma-orange" alt="Local First">
-    <a href="https://github.com/HKUDS/nanobot"><img src="https://img.shields.io/badge/forked%20from-nanobot-1f6feb" alt="Forked from nanobot"></a>
-  </p>
+
+![Healthclaw — Private AI Wellbeing Companion](docs/assets/healthclaw_hero.png)
+
+# Healthclaw
+
+**A companion that checks in like it knows you.** Calm, personal, and always around.
+
+[![Python ≥3.11](https://img.shields.io/badge/python-≥3.11-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Local-first: Ollama + Gemma](https://img.shields.io/badge/local--first-Ollama%20%2B%20Gemma-orange)](https://ollama.com/)
+[![Forked from nanobot](https://img.shields.io/badge/forked%20from-nanobot-1f6feb)](https://github.com/HKUDS/nanobot)
+
 </div>
-
-<br>
-
-<div align="center">
-  <img src="docs/assets/Healthclaw_hero.png" alt="Healthclaw — A companion that checks in like it knows you" width="720">
-</div>
-
-<br>
-
-> A companion that checks in like it knows you. Calm, personal, and always around.
-> Medication, movement, stress, sleep, or just daily rhythm — start with a few quick choices and it will keep learning what actually helps.
 
 ---
 
@@ -40,157 +32,163 @@ It's not a clinical chatbot. It's the coach who texts you back at midnight, call
 | 🔒 **Fully private** | Run 100% locally with Gemma via Ollama. No API subscriptions, no data sent anywhere |
 | 👨‍👩‍👧‍👦 **Family mode** | Each family member gets their own isolated Docker workspace — separate memory, separate personality |
 | 🧠 **Remembers you** | Layered memory system that consolidates and reflects, not just stores |
-| 💬 **Feels human** | Warm, direct, sometimes dry — never corporate. See the [prompt architecture](docs/NATURAL_COMPANION_PROMPTS.md) |
+| 💬 **Feels human** | Warm, direct, sometimes dry — never corporate |
 | 🌙 **2am mode** | Knows when to be quiet and grounding at night, when to push during the day |
 | ⏰ **Proactive** | Daily heartbeat check-ins, medication reminders, habit tracking — on your schedule |
 | 🔌 **Multi-channel** | Telegram, Discord, Slack, WhatsApp, Matrix, and more |
 
 ---
 
-## Quick Start — Local & Private (Recommended)
+## Quick Start — Local & Private *(Recommended)*
 
-This is the recommended path. Your data stays on your machine. No API keys needed.
+Your data stays on your machine. No API keys needed.
 
-### Prerequisites
-
-- [Docker & Docker Compose](https://docs.docker.com/get-docker/)
-- [Ollama](https://ollama.com/) installed on your host
-
-### 1. Pull a Gemma model
+### 1. Install Ollama and pull Gemma
 
 ```bash
-# Recommended: Gemma 7B (needs ~8GB RAM)
+# Install Ollama (macOS/Linux)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull Gemma 7B (recommended — ~8GB RAM)
 ollama pull gemma:7b
 
-# Lighter alternative: Gemma 2B (needs ~4GB RAM)
-ollama pull gemma:2b
+# Or for lower-resource machines, use Gemma 2B
+# ollama pull gemma:2b
 ```
 
-### 2. Clone & configure
+### 2. Clone and configure
 
 ```bash
-git clone https://github.com/vlbandara/Healthclaw.git
-cd Healthclaw
-
-# Create your local config from the template
+git clone https://github.com/vlbandara/healthclaw.git
+cd healthclaw
 cp .env.example .env
 ```
 
-The defaults in `.env.example` already point to local Ollama. Just add your Telegram bot token:
+### 3. Add your Telegram bot token
 
 ```bash
-# Get a bot token from @BotFather on Telegram, then:
-# Edit .env and set TELEGRAM_BOT_TOKEN=your-token-here
+# Get a bot token from @BotFather on Telegram, then edit .env:
+TELEGRAM_BOT_TOKEN=123456789:YOUR_TOKEN_HERE
 ```
 
-### 3. Start the stack
+### 4. Start the stack
 
 ```bash
 docker compose --env-file .env up -d --build postgres redis orchestrator worker
 ```
 
-### 4. Say hello
+### 5. Say hello
 
-Search for your bot on Telegram and send a message. Healthclaw will greet you and begin the wellbeing onboarding conversation.
+Open Telegram, find your bot, and send a message. Healthclaw will greet you and begin the wellbeing onboarding.
 
-> 📖 **Full walkthrough:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
+> 📖 **[Full walkthrough →](docs/GETTING_STARTED.md)**
 
 ---
 
 ## Quick Start — Cloud API
 
-If you prefer a cloud LLM (Claude, GPT-4, etc.) instead of running locally:
+Prefer a cloud LLM? Use OpenRouter, Anthropic, or OpenAI instead of local Gemma.
 
 ```bash
-git clone https://github.com/vlbandara/Healthclaw.git
-cd Healthclaw
+git clone https://github.com/vlbandara/healthclaw.git
+cd healthclaw
 cp .env.example .env
 ```
 
-Edit `.env` and switch to a cloud provider:
+Edit `.env`:
 
-```bash
+```env
 NANOBOT_AGENTS__DEFAULTS__PROVIDER=openrouter
 NANOBOT_AGENTS__DEFAULTS__MODEL=anthropic/claude-opus-4-5
-# Add your API key from https://openrouter.ai/
-MINIMAX_API_KEY=sk-or-v1-your-key-here
+MINIMAX_API_KEY=sk-or-v1-your-key-here   # from openrouter.ai
 ```
 
-Then start the stack the same way:
-
-```bash
-docker compose --env-file .env up -d --build postgres redis orchestrator worker
-```
+Then start: `docker compose --env-file .env up -d --build postgres redis orchestrator worker`
 
 ---
 
 ## Family Onboarding
 
-This is the killer feature. Healthclaw isolates every user into their own Docker workspace with separate memory, config, and health profile. No data ever crosses between family members.
+This is the killer feature. When `NANOBOT_MULTI_TENANT=true`:
 
 ```
-NANOBOT_MULTI_TENANT=true   # Already set in .env.example
+Mom sends "Hi"  → Isolated workspace, separate memory, separate personality
+Dad sends "Hi"  → Completely separate workspace, they never cross
+You send "Hi"   → Your own private companion
 ```
 
-1. **Mom** sends "Hi" → Healthclaw spins up an isolated workspace just for her
-2. **Dad** sends "Hi" → Completely separate workspace, separate memory
-3. **You** send "Hi" → Your own private companion
+Each person gets a personalized wellbeing coach processed against your private local Gemma instance.
 
-Each person gets a personalized wellbeing coach that remembers only their context. All processed against your private local Gemma instance.
-
-> 📖 **Full guide:** [docs/FAMILY_WELLBEING_LOCAL_SETUP.md](docs/FAMILY_WELLBEING_LOCAL_SETUP.md)
+> 📖 **[Family setup guide →](docs/FAMILY_WELLBEING_LOCAL_SETUP.md)**
 
 ---
 
-## What it does
+## What Healthclaw Does
 
 **Habit coaching** — Checks in daily, tracks patterns, defends your routines against drift. Relapse recovery, not guilt.
 
 **Sleep support** — Monitors sleep quality, connects it to your goals. No lectures at midnight — just one anchor, one next move.
 
-**Health onboarding** — Gathers your health profile through natural conversation. No form-filling.
-
 **Medication reminders** — Cron-powered reminders delivered on your schedule, through your preferred channel.
 
-**Daily heartbeat** — Periodic background check-ins on a configurable interval. Stays in touch even when you haven't opened the app.
+**Daily heartbeat** — Periodic background check-ins on a configurable interval.
 
-**Memory that reflects** — Not just storage. Dream consolidation runs periodically to turn raw conversation into durable, curated knowledge about you.
+**Memory that reflects** — Dream consolidation runs periodically to turn raw conversation into durable, curated knowledge about you.
 
 ---
 
 ## Architecture
 
 ```
- ┌─────────────────────────────────────────────────────┐
- │                   Telegram / Channels                │
- └──────────────────────┬──────────────────────────────┘
-                        │
- ┌──────────────────────▼──────────────────────────────┐
- │                  Healthclaw Gateway                    │
- │  ┌────────────┐  ┌───────────┐  ┌───────────────┐  │
- │  │  channels  │  │  providers │  │    skills     │  │
- │  └────────────┘  └───────────┘  └───────────────┘  │
- │  ┌────────────┐  ┌───────────┐  ┌───────────────┐  │
- │  │   agent    │  │   cron    │  │   session     │  │
- │  └────────────┘  └───────────┘  └───────────────┘  │
- │  ┌──────────────────────────────────────────────┐  │
- │  │         SOUL · MEMORY · HEARTBEAT            │  │
- │  │      (wellbeing-specific prompt layers)       │  │
- │  └──────────────────────────────────────────────┘  │
- └─────────────────────────────────────────────────────┘
-                        │
-           ┌────────────┴────────────┐
-           │   Per-User Workspace    │
-           │  (isolated Docker env)  │
-           │  - SOUL.md & USER.md    │
-           │  - memory/history.jsonl │
-           │  - health profile       │
-           └─────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                   Telegram / Channels                 │
+└──────────────────────┬───────────────────────────────┘
+                       │
+        ┌──────────────▼──────────────┐
+        │      Healthclaw Gateway      │
+        │  ┌────────┐ ┌──────────┐   │
+        │  │channels│ │ providers │   │
+        │  └────────┘ └──────────┘   │
+        │  ┌────────┐ ┌──────────┐   │
+        │  │  agent │ │   cron   │   │
+        │  └────────┘ └──────────┘   │
+        │  ┌────────────────────┐   │
+        │  │  SOUL · MEMORY ·   │   │
+        │  │  HEARTBEAT         │   │
+        │  └────────────────────┘   │
+        └──────────────┬─────────────┘
+                       │
+        ┌──────────────▼──────────────┐
+        │    Per-User Workspace       │
+        │  (isolated Docker env)      │
+        │  - SOUL.md & USER.md        │
+        │  - memory/history.jsonl     │
+        │  - health profile           │
+        └─────────────────────────────┘
 ```
 
-Each user runs in an isolated Docker workspace: their own config, memory, conversation history, and health profile — fully private.
+> 📖 **[Deep dive →](docs/ARCHITECTURE.md)**
 
-> 📖 **Deep dive:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+---
+
+## Memory System
+
+Healthclaw's memory is layered and reflective — not just storage:
+
+| Layer | What it does |
+|-------|--------------|
+| **Session** | Live conversation context |
+| **History** | Append-only compressed archive (`memory/history.jsonl`) |
+| **Dream** | Periodic consolidation that distills history into structured knowledge |
+| **Long-term** | Curated files (`SOUL.md`, `USER.md`, `MEMORY.md`) — git-backed and restorable |
+
+| Command | What it does |
+|---------|--------------|
+| `/dream` | Run memory consolidation now |
+| `/dream-log` | Show latest memory change |
+| `/dream-restore <sha>` | Restore memory to a previous state |
+
+> 📖 **[Full documentation →](docs/MEMORY.md)**
 
 ---
 
@@ -205,42 +203,20 @@ Each user runs in an isolated Docker workspace: their own config, memory, conver
 | **Matrix** | Homeserver URL + access token |
 | **Email** | IMAP/SMTP credentials |
 
-> 📖 **Channel plugin guide:** [docs/CHANNEL_PLUGIN_GUIDE.md](docs/CHANNEL_PLUGIN_GUIDE.md)
+> 📖 **[Channel plugin guide →](docs/CHANNEL_PLUGIN_GUIDE.md)**
 
 ---
 
 ## AI Providers
 
-| Provider | Notes |
-|----------|-------|
-| `ollama` | **Recommended** — Local, private, free. Gemma, Llama, Mistral, etc. |
-| `openrouter` | Access to all cloud models via one API |
+| Provider | Best for |
+|----------|----------|
+| `ollama` | **Local & private** — Gemma, Llama, Mistral |
+| `openrouter` | Unified access to many models |
 | `anthropic` | Claude direct |
-| `openai` | GPT direct |
-| `deepseek` | DeepSeek direct |
-| `groq` | Free Whisper transcription for voice messages |
-| `vllm` / `ovms` | Local OpenAI-compatible servers |
-| `custom` | Any OpenAI-compatible endpoint |
-
----
-
-## Memory System
-
-Healthclaw uses a layered memory architecture:
-
-- **Session** — Live conversation context
-- **History** (`memory/history.jsonl`) — Append-only compressed conversation archive
-- **Dream** — Periodic consolidation that distills history into structured knowledge
-- **Long-term** (`SOUL.md`, `USER.md`, `MEMORY.md`) — Curated, durable knowledge files
-- **Git-backed** — Memory changes are versioned and restorable
-
-| Command | What it does |
-|---------|--------------|
-| `/dream` | Run Dream memory consolidation now |
-| `/dream-log` | Show latest memory change |
-| `/dream-restore <sha>` | Restore memory to a previous state |
-
-> 📖 **Full documentation:** [docs/MEMORY.md](docs/MEMORY.md)
+| `openai` | GPT-4, GPT-4o |
+| `deepseek` | DeepSeek models |
+| `groq` | Free Whisper for voice messages |
 
 ---
 
@@ -264,49 +240,13 @@ Healthclaw uses a layered memory architecture:
 - **Tone presets:** Gentle, Direct, or Calm — [docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md)
 - **Prompts:** See the full [prompt architecture](docs/NATURAL_COMPANION_PROMPTS.md)
 - **Self-hosting:** Deploy on any VPS — [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)
-- **Security hardening:** Production checklist — [SECURITY.md](SECURITY.md)
-
----
-
-## Docker
-
-```bash
-# Build
-docker build -t Healthclaw .
-
-# First-time setup
-docker run -v ~/.nanobot:/root/.nanobot --rm Healthclaw onboard
-
-# Start the gateway
-docker run -v ~/.nanobot:/root/.nanobot -p 18790:18790 Healthclaw gateway
-```
-
-Or with Docker Compose (recommended):
-
-```bash
-cp .env.example .env
-# Edit .env with your settings
-docker compose --env-file .env up -d --build
-```
-
----
-
-## Contributing
-
-We welcome contributions of all sizes. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-- 🐛 [Report a bug](https://github.com/vlbandara/Healthclaw/issues/new?template=bug_report.md)
-- 💡 [Request a feature](https://github.com/vlbandara/Healthclaw/issues/new?template=feature_request.md)
-- 💬 [Ask a question](https://github.com/vlbandara/Healthclaw/discussions)
-
-Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ---
 
 ## Documentation
 
-| Doc | Description |
-|-----|-------------|
+| | |
+|---|---|
 | [Getting Started](docs/GETTING_STARTED.md) | Step-by-step beginner guide |
 | [Family Setup](docs/FAMILY_WELLBEING_LOCAL_SETUP.md) | Multi-user local deployment |
 | [Architecture](docs/ARCHITECTURE.md) | System design deep dive |
@@ -315,8 +255,21 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 | [Self-Hosting](docs/SELF_HOSTING.md) | Deploy on your own server |
 | [Security](SECURITY.md) | Security best practices |
 | [Prompt Architecture](docs/NATURAL_COMPANION_PROMPTS.md) | How the companion voice works |
-| [Channel Plugins](docs/CHANNEL_PLUGIN_GUIDE.md) | Add new chat channels |
 | [FAQ](docs/FAQ.md) | Common questions |
+
+---
+
+## Contributing
+
+We welcome contributions of all sizes.
+
+- 🐛 [Report a bug](https://github.com/vlbandara/healthclaw/issues/new?template=bug_report.md)
+- 💡 [Request a feature](https://github.com/vlbandara/healthclaw/issues/new?template=feature_request.md)
+- 💬 [Ask a question](https://github.com/vlbandara/healthclaw/discussions)
+
+Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+
+> 📖 **[Contributing guidelines →](CONTRIBUTING.md)**
 
 ---
 
