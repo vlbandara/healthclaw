@@ -1,4 +1,4 @@
-# BiomeClaw Production Reliability
+# Healthclaw Production Reliability
 
 This repo uses a GitHub-first production loop for the Hetzner deployment.
 
@@ -38,13 +38,13 @@ This repo uses a GitHub-first production loop for the Hetzner deployment.
 ## Local Commands
 
 ```bash
-bash scripts/prod/deploy.sh --host 46.62.231.14 --user root --app-dir /opt/biomeclaw --base-url http://46.62.231.14
+bash scripts/prod/deploy.sh --host 46.62.231.14 --user root --app-dir /opt/Healthclaw --base-url http://46.62.231.14
 ```
 
 ```bash
-bash scripts/prod/smoke_check.sh --host 46.62.231.14 --user root --app-dir /opt/biomeclaw --base-url http://46.62.231.14
+bash scripts/prod/smoke_check.sh --host 46.62.231.14 --user root --app-dir /opt/Healthclaw --base-url http://46.62.231.14
 ```
 
 ```bash
-bash scripts/prod/collect_diagnostics.sh --host 46.62.231.14 --user root --app-dir /opt/biomeclaw --base-url http://46.62.231.14
+bash scripts/prod/collect_diagnostics.sh --host 46.62.231.14 --user root --app-dir /opt/Healthclaw --base-url http://46.62.231.14
 ```

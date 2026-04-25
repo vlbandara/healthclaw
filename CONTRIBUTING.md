@@ -1,8 +1,8 @@
-# Contributing to nanobot
+# Contributing to Healthclaw
 
 Thank you for being here.
 
-nanobot is built with a simple belief: good tools should feel calm, clear, and humane.
+Healthclaw is built with a simple belief: wellbeing tools should feel calm, clear, and personal.
 We care deeply about useful features, but we also believe in achieving more with less:
 solutions should be powerful without becoming heavy, and ambitious without becoming
 needlessly complicated.
@@ -14,67 +14,40 @@ software together: with care, clarity, and respect for the next person reading t
 
 | Maintainer | Focus |
 |------------|-------|
-| [@re-bin](https://github.com/re-bin) | Project lead, `main` branch |
-| [@chengyongru](https://github.com/chengyongru) | `nightly` branch, experimental features |
+| [@vlbandara](https://github.com/vlbandara) | Project lead, wellbeing companion |
 
 ## Branching Strategy
 
-We use a two-branch model to balance stability and exploration:
+We use a simple model:
 
-| Branch | Purpose | Stability |
-|--------|---------|-----------|
-| `main` | Stable releases | Production-ready |
-| `nightly` | Experimental features | May have bugs or breaking changes |
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable releases |
+| `nightly` | Experimental features |
 
 ### Which Branch Should I Target?
 
-**Target `nightly` if your PR includes:**
-
+**Target `nightly`** if your PR includes:
 - New features or functionality
 - Refactoring that may affect existing behavior
 - Changes to APIs or configuration
 
-**Target `main` if your PR includes:**
-
+**Target `main`** if your PR includes:
 - Bug fixes with no behavior changes
 - Documentation improvements
 - Minor tweaks that don't affect functionality
 
-**When in doubt, target `nightly`.** It is easier to move a stable idea from `nightly`
-to `main` than to undo a risky change after it lands in the stable branch.
-
-### How Does Nightly Get Merged to Main?
-
-We don't merge the entire `nightly` branch. Instead, stable features are **cherry-picked** from `nightly` into individual PRs targeting `main`:
-
-```
-nightly  ──┬── feature A (stable) ──► PR ──► main
-           ├── feature B (testing)
-           └── feature C (stable) ──► PR ──► main
-```
-
-This happens approximately **once a week**, but the timing depends on when features become stable enough.
-
-### Quick Summary
-
-| Your Change | Target Branch |
-|-------------|---------------|
-| New feature | `nightly` |
-| Bug fix | `main` |
-| Documentation | `main` |
-| Refactoring | `nightly` |
-| Unsure | `nightly` |
+**When in doubt, target `nightly`.** Stable features are merged to `main` periodically.
 
 ## Development Setup
 
-Keep setup boring and reliable. The goal is to get you into the code quickly:
+Setup should be boring and reliable:
 
 ```bash
-# Clone the repository
-git clone https://github.com/HKUDS/nanobot.git
-cd nanobot
+git clone https://github.com/vlbandara/Healthclaw.git
+cd Healthclaw
 
-# Install with dev dependencies
+# Install with dev dependencies (uses uv)
 pip install -e ".[dev]"
 
 # Run tests
@@ -87,17 +60,27 @@ ruff check nanobot/
 ruff format nanobot/
 ```
 
+## Good First Issues
+
+Looking for a way to contribute? Look for the `good first issue` label on
+[GitHub Issues](https://github.com/vlbandara/Healthclaw/issues?q=label%3A%22good+first+issue%22).
+
+We label issues that are:
+- Self-contained and well-scoped
+- Have clear acceptance criteria
+- Don't require deep knowledge of the codebase
+
 ## Code Style
 
-We care about more than passing lint. We want nanobot to stay small, calm, and readable.
+We care about more than passing lint. We want Healthclaw to stay small, calm, and readable.
 
 When contributing, please aim for code that feels:
 
-- Simple: prefer the smallest change that solves the real problem
-- Clear: optimize for the next reader, not for cleverness
-- Decoupled: keep boundaries clean and avoid unnecessary new abstractions
-- Honest: do not hide complexity, but do not create extra complexity either
-- Durable: choose solutions that are easy to maintain, test, and extend
+- **Simple** — prefer the smallest change that solves the real problem
+- **Clear** — optimize for the next reader, not for cleverness
+- **Decoupled** — keep boundaries clean and avoid unnecessary new abstractions
+- **Honest** — do not hide complexity, but do not create extra complexity either
+- **Durable** — choose solutions that are easy to maintain, test, and extend
 
 In practice:
 
@@ -113,10 +96,14 @@ In practice:
 
 If you have questions, ideas, or half-formed insights, you are warmly welcome here.
 
-Please feel free to open an [issue](https://github.com/HKUDS/nanobot/issues), join the community, or simply reach out:
+- [GitHub Discussions](https://github.com/vlbandara/Healthclaw/discussions) — Ask questions, share ideas
+- [GitHub Issues](https://github.com/vlbandara/Healthclaw/issues) — Report bugs, request features
 
-- [Discord](https://discord.gg/MnCvHqpUGB)
-- [Feishu/WeChat](./COMMUNICATION.md)
-- Email: Xubin Ren (@Re-bin) — <xubinrencs@gmail.com>
+Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
-Thank you for spending your time and care on nanobot. We would love for more people to participate in this community, and we genuinely welcome contributions of all sizes.
+## Acknowledgements
+
+Healthclaw is a wellbeing-focused fork of [nanobot](https://github.com/HKUDS/nanobot) by the HKUDS team.
+We're grateful for their excellent foundation.
+
+Thank you for spending your time and care on Healthclaw. We would love for more people to participate in this community, and we genuinely welcome contributions of all sizes.

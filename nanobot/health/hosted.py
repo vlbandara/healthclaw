@@ -27,6 +27,12 @@ PROVIDER_CHOICES: dict[str, dict[str, str]] = {
         "model": "openai/gpt-4o-mini",
         "api_base": "https://openrouter.ai/api/v1",
     },
+    "ollama": {
+        "label": "Ollama (Local)",
+        "model": "gemma:7b",
+        "api_base": "http://host.docker.internal:11434/v1",
+        "no_key_required": "true",
+    },
 }
 
 
@@ -84,12 +90,40 @@ def build_whatsapp_chat_url(phone: str = "", fallback_url: str = "") -> str:
 def get_provider_choice(provider_name: str) -> dict[str, str]:
     normalized = (provider_name or "").strip().lower()
     if normalized not in PROVIDER_CHOICES:
-        raise ValueError("Choose MiniMax or OpenRouter.")
+        raise ValueError("Choose a supported provider: MiniMax, OpenRouter, or Ollama.")
     return PROVIDER_CHOICES[normalized]
+
+
+async def validate_ollama_connection(api_base: str, model: str) -> dict[str, Any]:
+    """Ping Ollama's OpenAI-compat endpoint to verify it's reachable and the model is available."""
+    client = AsyncOpenAI(
+        api_key="ollama",  # Ollama ignores the key but openai SDK requires a non-empty value
+        base_url=api_base,
+    )
+    await client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "Hi"}],
+        max_tokens=4,
+        temperature=0,
+    )
+    return {
+        "provider": "ollama",
+        "label": "Ollama (Local)",
+        "model": model,
+        "api_base": api_base,
+    }
 
 
 async def validate_provider_credentials(provider_name: str, api_key: str) -> dict[str, Any]:
     choice = get_provider_choice(provider_name)
+    normalized = provider_name.strip().lower()
+
+    if normalized == "ollama":
+        return await validate_ollama_connection(
+            api_base=choice["api_base"],
+            model=choice["model"],
+        )
+
     client = AsyncOpenAI(
         api_key=api_key.strip(),
         base_url=choice["api_base"],

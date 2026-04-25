@@ -11,7 +11,7 @@ require_bin ssh
 BASE_URL=""
 HOST="${PROD_HOST:-}"
 USER_NAME="${PROD_USER:-root}"
-APP_DIR="${PROD_APP_DIR:-/opt/biomeclaw}"
+APP_DIR="${PROD_APP_DIR:-/opt/healthclaw}"
 LOG_SINCE="${LOG_SINCE:-2h}"
 OUT_DIR=""
 
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 BASE_URL="${BASE_URL:-$(default_base_url "${HOST}")}"
-OUT_DIR="${OUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/biomeclaw-diagnostics.XXXXXX")}"
+OUT_DIR="${OUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/healthclaw-diagnostics.XXXXXX")}"
 ensure_dir "${OUT_DIR}"
 ensure_dir "${OUT_DIR}/endpoints"
 

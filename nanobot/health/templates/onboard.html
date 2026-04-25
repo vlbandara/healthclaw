@@ -32,6 +32,22 @@
           <p class="lede">A few quick choices, then we’ll send you back to {{ invite_meta.channel|title }} with a companion that feels calmer, more local, and more like your rhythm.</p>
         </header>
 
+        <section class="card onboard-wizard-card" id="telegram-connect-card" style="margin-bottom: var(--nh-space-lg);">
+          <h2 style="margin-top: 0;">Connect Telegram</h2>
+          <p class="lede" style="margin-bottom: var(--nh-space-md);">Paste your Telegram <strong>bot token</strong> once. We’ll validate it and generate your deep link.</p>
+          <div class="story-form-grid" style="grid-template-columns: 1fr;">
+            <label class="tap-field">
+              <span>Telegram bot token</span>
+              <input id="telegram-bot-token" name="telegram_bot_token" autocomplete="off" spellcheck="false" placeholder="123456:ABC..." />
+              <small class="field-hint">We use this only to validate and fetch your bot username.</small>
+            </label>
+          </div>
+          <div class="actions" style="justify-content: flex-start;">
+            <button type="button" id="telegram-connect-btn">Connect Telegram</button>
+          </div>
+          <p id="telegram-connect-status" class="status"></p>
+        </section>
+
         <form
           id="onboard-form"
           class="wizard-layout wizard-layout--story"

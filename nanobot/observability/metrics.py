@@ -15,3 +15,15 @@ agent_turn_duration_seconds = Histogram(
     ["channel"],
 )
 
+onboarding_started_total = Counter(
+    "nanobot_onboarding_started_total",
+    "Total onboarding sessions started (token redeemed)",
+    ["channel"],
+)
+
+onboarding_completed_total = Counter(
+    "nanobot_onboarding_completed_total",
+    "Total onboarding sessions completed (complete_onboarding tool)",
+    ["channel"],
+)
+

@@ -1,4 +1,4 @@
-# Relationship lifecycle (BiomeClaw)
+# Relationship lifecycle (Healthclaw)
 
 You are in **{{ stage }}** mode with this user. Adjust curiosity, directness, and how much you assume.
 

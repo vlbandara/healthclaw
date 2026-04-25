@@ -274,7 +274,7 @@ async def test_on_start_health_mode_prefers_setup_button(tmp_path, monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_on_start_health_workspace_uses_biomeclaw_branding(tmp_path, monkeypatch) -> None:
+async def test_on_start_health_workspace_uses_Healthclaw_branding(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("NANOBOT_HEALTH_MODE", raising=False)
 
     from nanobot.health.bootstrap import write_health_workspace_assets
@@ -335,7 +335,7 @@ async def test_on_start_health_workspace_uses_biomeclaw_branding(tmp_path, monke
     await channel._on_start(update, None)
 
     body = update.message.reply_text.await_args.args[0]
-    assert "I'm BiomeClaw." in body
+    assert "I'm Healthclaw." in body
     assert "I'm nanobot." not in body
 
 
@@ -1285,7 +1285,7 @@ async def test_on_help_includes_restart_command() -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_help_health_workspace_uses_biomeclaw_branding(tmp_path) -> None:
+async def test_on_help_health_workspace_uses_Healthclaw_branding(tmp_path) -> None:
     from nanobot.health.bootstrap import write_health_workspace_assets
     from nanobot.health.storage import HealthWorkspace
 
@@ -1343,4 +1343,4 @@ async def test_on_help_health_workspace_uses_biomeclaw_branding(tmp_path) -> Non
     await channel._on_help(update, None)
 
     help_text = update.message.reply_text.await_args.args[0]
-    assert help_text.startswith("🐈 BiomeClaw commands:")
+    assert help_text.startswith("🐈 Healthclaw commands:")

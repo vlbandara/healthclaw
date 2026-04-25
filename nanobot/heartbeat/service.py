@@ -155,8 +155,10 @@ class HeartbeatService:
                 (
                     f"Morning check-in for {local_date} is due. "
                     f"Local time is {local_now.strftime('%H:%M')} and the wake-time trigger is {wake_time}. "
-                    "Send one crisp, upbeat, forward-looking morning check-in with at most 3 questions and one concrete next move. "
-                    "If goals or concerns are sparse, keep it exploratory and low-pressure."
+                    "Send one crisp, upbeat, forward-looking morning check-in with at most 3 questions and one concrete next move.\n"
+                    "If goals or concerns are sparse, keep it exploratory and low-pressure.\n"
+                    "Use the real session context and hidden memory already available in the main prompt "
+                    "to avoid repeating questions from recent turns."
                 )
             )
             morning_due = True

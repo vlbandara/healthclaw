@@ -17,6 +17,10 @@ def _get_database_url() -> str:
     url = os.environ.get("NANOBOT_DATABASE_URL", "").strip()
     if not url:
         raise RuntimeError("NANOBOT_DATABASE_URL is required for migrations")
+    # Runtime uses asyncpg-friendly URLs ("postgresql://..."), but SQLAlchemy needs an explicit driver
+    # when psycopg2 isn't installed. We standardize on psycopg3 in images.
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url.removeprefix("postgresql://")
     return url
 
 

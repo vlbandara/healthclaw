@@ -54,7 +54,7 @@ jobs:
 
       - name: Exercise smoke check script
         run: |
-          python3 - <<'PY' >/tmp/biomeclaw-smoke-ci.log 2>&1 &
+          python3 - <<'PY' >/tmp/Healthclaw-smoke-ci.log 2>&1 &
           import json
           from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -84,18 +84,18 @@ jobs:
             fi
             sleep 0.2
           done
-          bash scripts/prod/smoke_check.sh --base-url http://127.0.0.1:8765 --out-dir /tmp/biomeclaw-smoke-ci
+          bash scripts/prod/smoke_check.sh --base-url http://127.0.0.1:8765 --out-dir /tmp/Healthclaw-smoke-ci
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          summary = json.loads(Path("/tmp/biomeclaw-smoke-ci/summary.json").read_text(encoding="utf-8"))
+          summary = json.loads(Path("/tmp/Healthclaw-smoke-ci/summary.json").read_text(encoding="utf-8"))
           assert summary["status"] == "ok", summary
           assert summary["failures"] == [], summary
           PY
 
       - name: Dry-run production deploy script
-        run: bash scripts/prod/deploy.sh --host 127.0.0.1 --base-url http://127.0.0.1 --dry-run --out-dir /tmp/biomeclaw-deploy-dry-run
+        run: bash scripts/prod/deploy.sh --host 127.0.0.1 --base-url http://127.0.0.1 --dry-run --out-dir /tmp/Healthclaw-deploy-dry-run
 
       - name: Validate docker compose services
         run: docker compose config --services

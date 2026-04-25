@@ -85,7 +85,7 @@ jobs:
           bash scripts/prod/notify_telegram.sh \
             --bot-token "${TELEGRAM_ALERT_BOT_TOKEN}" \
             --chat-id "${TELEGRAM_ALERT_CHAT_ID}" \
-            --message "BiomeClaw prod alert: ${{ steps.incident.outputs.summary }}. Run: ${run_url}"
+            --message "Healthclaw prod alert: ${{ steps.incident.outputs.summary }}. Run: ${run_url}"
 
       - name: Create or update incident
         if: steps.smoke.outcome == 'failure'

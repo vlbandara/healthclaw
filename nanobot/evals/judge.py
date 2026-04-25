@@ -16,3 +16,11 @@ def contains_judge(*, output: str, expected_contains: str) -> Verdict:
     ok = exp.lower() in (output or "").lower()
     return Verdict(passed=ok, reason=f"expected substring: {exp!r}")
 
+
+def not_contains_judge(*, output: str, forbidden: list[str]) -> Verdict:
+    out = (output or "").lower()
+    for phrase in forbidden:
+        if (phrase or "").lower() in out:
+            return Verdict(passed=False, reason=f"forbidden phrase present: {phrase!r}")
+    return Verdict(passed=True, reason="ok")
+

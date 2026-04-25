@@ -685,7 +685,7 @@ class TelegramChannel(BaseChannel):
             )
             return
 
-        assistant_name = "BiomeClaw" if self.workspace and is_health_workspace(self.workspace) else "nanobot"
+        assistant_name = "Healthclaw" if self.workspace and is_health_workspace(self.workspace) else "nanobot"
         await update.message.reply_text(
             f"👋 Hi {user.first_name}! I'm {assistant_name}.\n\n"
             "Send me a message and I'll respond!\n"
@@ -698,7 +698,7 @@ class TelegramChannel(BaseChannel):
             return
         from nanobot.health.storage import is_health_workspace
 
-        assistant_name = "BiomeClaw" if self.workspace and is_health_workspace(self.workspace) else "nanobot"
+        assistant_name = "Healthclaw" if self.workspace and is_health_workspace(self.workspace) else "nanobot"
         await update.message.reply_text(build_help_text(assistant_name=assistant_name))
 
     @staticmethod

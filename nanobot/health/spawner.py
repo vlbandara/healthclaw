@@ -67,7 +67,7 @@ class HealthInstanceSpawner:
         network: str | None = None,
     ):
         self.docker_base_url = docker_base_url or _env("DOCKER_HOST", "")
-        self.image = image or _env("NANOBOT_HEALTH_INSTANCE_IMAGE", "biomeclaw-orchestrator:latest")
+        self.image = image or _env("NANOBOT_HEALTH_INSTANCE_IMAGE", "Healthclaw-orchestrator:latest")
         self.network = network or _env("NANOBOT_HEALTH_INSTANCE_NETWORK", "")
         self._detected_network: str | None = None
 

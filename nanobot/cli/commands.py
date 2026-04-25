@@ -450,7 +450,7 @@ def migrate(
     asyncio.run(_run())
 
 
-@app.command()
+@app.command("serve")
 def serve(
     config_path: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
     host: str | None = typer.Option(None, "--host", help="Bind host (overrides config.gateway.host)"),
@@ -629,8 +629,8 @@ def _migrate_cron_store(config: "Config") -> None:
 # ============================================================================
 
 
-@app.command()
-def serve(
+@app.command("api")
+def api(
     port: int | None = typer.Option(None, "--port", "-p", help="API server port"),
     host: str | None = typer.Option(None, "--host", "-H", help="Bind address"),
     timeout: float | None = typer.Option(None, "--timeout", "-t", help="Per-request timeout (seconds)"),
@@ -1650,7 +1650,18 @@ def db_upgrade(
     from alembic import command
     from alembic.config import Config as AlembicConfig
 
-    alembic_cfg = AlembicConfig(str(Path(__file__).resolve().parent.parent.parent / "alembic.ini"))
+    # Prefer a repo/app-root alembic.ini if present (works in Docker images that bundle migrations).
+    candidates = [
+        Path.cwd() / "alembic.ini",
+        Path("/app/alembic.ini"),
+        Path(__file__).resolve().parent.parent.parent / "alembic.ini",
+    ]
+    ini_path = next((p for p in candidates if p.exists()), None)
+    if ini_path is None:
+        console.print("[red]alembic.ini not found in working directory or /app.[/red]")
+        raise typer.Exit(1)
+
+    alembic_cfg = AlembicConfig(str(ini_path))
     command.upgrade(alembic_cfg, revision)
     console.print(f"[green]✓[/green] Upgraded database to {revision}")
 

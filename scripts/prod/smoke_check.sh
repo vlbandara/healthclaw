@@ -10,7 +10,7 @@ require_bin curl
 BASE_URL=""
 HOST="${PROD_HOST:-}"
 USER_NAME="${PROD_USER:-root}"
-APP_DIR="${PROD_APP_DIR:-/opt/biomeclaw}"
+APP_DIR="${PROD_APP_DIR:-/opt/healthclaw}"
 LOG_SINCE="${LOG_SINCE:-15m}"
 OUT_DIR=""
 RETRIES="${SMOKE_RETRIES:-20}"
@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 BASE_URL="${BASE_URL:-$(default_base_url "${HOST}")}"
-OUT_DIR="${OUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/biomeclaw-smoke.XXXXXX")}"
+OUT_DIR="${OUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/healthclaw-smoke.XXXXXX")}"
 ensure_dir "${OUT_DIR}"
 ensure_dir "${OUT_DIR}/endpoints"
 

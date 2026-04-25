@@ -22,6 +22,9 @@ const finalSummaryLocation = document.getElementById("final-summary-location");
 const finalSummaryTimezone = document.getElementById("final-summary-timezone");
 const finalSummaryStyle = document.getElementById("final-summary-style");
 const timezoneInput = form?.querySelector('[name="timezone"]');
+const telegramConnectBtn = document.getElementById("telegram-connect-btn");
+const telegramTokenInput = document.getElementById("telegram-bot-token");
+const telegramConnectStatus = document.getElementById("telegram-connect-status");
 
 const SCENES = [
   { label: "Step 1 of 3", hint: "Choose what you want help with.", mood: "happy" },
@@ -469,6 +472,55 @@ form.addEventListener("submit", async (event) => {
   statusNode.textContent = "Your companion is ready.";
   renderCompletion(payload.phase1.preferred_channel, links, data.userToken || "");
 });
+
+async function connectTelegram() {
+  if (!telegramConnectBtn || !telegramTokenInput) {
+    return;
+  }
+  const invite = form?.dataset?.invite || "";
+  const botToken = String(telegramTokenInput.value || "").trim();
+  if (!invite) {
+    if (telegramConnectStatus) telegramConnectStatus.textContent = "Missing invite token.";
+    return;
+  }
+  if (!botToken) {
+    if (telegramConnectStatus) telegramConnectStatus.textContent = "Paste your Telegram bot token first.";
+    return;
+  }
+  if (telegramConnectStatus) telegramConnectStatus.textContent = "Validating Telegram token…";
+  telegramConnectBtn.disabled = true;
+  try {
+    const response = await fetch(`/api/onboard/${encodeURIComponent(invite)}/channels/telegram`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botToken }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = data.detail || "Unable to connect Telegram.";
+      if (telegramConnectStatus) telegramConnectStatus.textContent = detail;
+      telegramConnectBtn.disabled = false;
+      return;
+    }
+    const link = (data.channelLinks || {}).telegram || "";
+    if (link) {
+      form.dataset.telegramUrl = link;
+    }
+    if (telegramConnectStatus) {
+      const username = (data.telegram || {}).bot_username || "";
+      telegramConnectStatus.textContent = username
+        ? `Connected @${username}. The Telegram link is ready below.`
+        : "Connected. The Telegram link is ready below.";
+    }
+  } catch (e) {
+    if (telegramConnectStatus) telegramConnectStatus.textContent = e?.message || "Unable to connect Telegram.";
+    telegramConnectBtn.disabled = false;
+  }
+}
+
+if (telegramConnectBtn) {
+  telegramConnectBtn.addEventListener("click", connectTelegram);
+}
 
 syncPreferredChannelWithInvite();
 seedTimezoneField();

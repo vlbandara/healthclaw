@@ -1,4 +1,4 @@
-# BiomeClaw Local Development
+# Healthclaw Local Development
 
 This repo now has an explicit split between production-tracking and local development:
 
@@ -9,7 +9,7 @@ This repo now has an explicit split between production-tracking and local develo
 ## Local Env Files
 
 - `.env`: production-oriented values that get copied to the Hetzner server.
-- `.env.local`: local-only values for your machine. Start from [.env.local.example](/Users/vinodhlahiru/Documents/Repos/nanobot/.env.local.example).
+- `.env.local`: local-only values for your machine. Start from `[.env.local.example](.env.local.example)`.
 
 `.env.local` is gitignored, uses a separate Compose project name, and keeps runtime state under `.local/nanobot-state` instead of `~/.nanobot`.
 
@@ -27,10 +27,12 @@ cp .env.local.example .env.local
 mkdir -p .local/nanobot-state/workspace .local/nanobot-state/whatsapp-auth
 ```
 
-3. Start the local health stack without touching the Hetzner server:
+3. Start your local Ollama server if utilizing local models like Gemma (see [Family Setup Guide](./FAMILY_WELLBEING_LOCAL_SETUP.md)).
+
+4. Start the local health stack without touching the Hetzner server:
 
 ```bash
-docker compose --env-file .env.local up -d --build postgres redis orchestrator worker whatsapp-bridge
+docker compose --env-file .env.local up -d --build postgres redis orchestrator worker
 ```
 
 4. Open the local API:

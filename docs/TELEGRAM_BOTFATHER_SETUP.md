@@ -21,7 +21,7 @@ Send `/newbot`.
 Examples:
 
 - `mybot48291_bot`
-- `vinodhealth731_bot`
+- `yourname_health731_bot`
 - `calmcheck284_bot`
 
 ## 3. Copy the token

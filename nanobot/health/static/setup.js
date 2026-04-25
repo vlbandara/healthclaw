@@ -24,6 +24,12 @@ const setupTimezonePill = document.getElementById("setup-timezone-pill");
 const usernameSuggestions = document.getElementById("username-suggestions");
 const SETUP_TOKEN_KEY = "nanobot-health-setup-token";
 
+// Provider step elements
+const providerOllamaSection = document.getElementById("provider-ollama-section");
+const providerApiSection = document.getElementById("provider-api-section");
+const providerSummary = document.getElementById("provider-summary");
+const providerRadios = form ? [...form.querySelectorAll('[name="provider_type"]')] : [];
+
 const TONE_PREFERENCES = {
   gentle: "Warm, gentle nudges",
   direct: "Direct, motivating pushes",
@@ -225,6 +231,41 @@ function updateStep() {
   backButton.style.visibility = currentStep === 0 ? "hidden" : "visible";
   nextButton.style.display = currentStep === steps.length - 1 ? "none" : "inline-flex";
   activateButton.style.display = currentStep === steps.length - 1 ? "inline-flex" : "none";
+}
+
+function selectedProviderType() {
+  return form ? (form.querySelector('[name="provider_type"]:checked')?.value || "ollama") : "ollama";
+}
+
+function updateProviderSections() {
+  const isOllama = selectedProviderType() === "ollama";
+  if (providerOllamaSection) providerOllamaSection.style.display = isOllama ? "" : "none";
+  if (providerApiSection) providerApiSection.style.display = isOllama ? "none" : "";
+}
+
+async function saveProvider() {
+  const token = form.dataset.setupToken;
+  const providerType = selectedProviderType();
+  if (providerType === "ollama") {
+    if (providerSummary) providerSummary.textContent = "Checking Ollama connection…";
+    await fetchJson(`/api/setup/${token}/provider`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "ollama", api_key: "" }),
+    });
+    if (providerSummary) providerSummary.textContent = "Ollama connected. Running locally.";
+  } else {
+    const providerName = form.querySelector('[name="provider_name"]')?.value || "openrouter";
+    const apiKey = (form.querySelector('[name="provider_api_key"]')?.value || "").trim();
+    if (!apiKey) throw new Error("Paste your API key before continuing.");
+    if (providerSummary) providerSummary.textContent = "Validating API key…";
+    await fetchJson(`/api/setup/${token}/provider`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: providerName, api_key: apiKey }),
+    });
+    if (providerSummary) providerSummary.textContent = "Provider connected.";
+  }
 }
 
 function setStatus(message, isError = false) {
@@ -474,7 +515,15 @@ async function activateSetup() {
 
 async function handleNext() {
   try {
+    // Step 0: Provider selection
     if (currentStep === 0) {
+      await saveProvider();
+      currentStep += 1;
+      updateStep();
+      return;
+    }
+    // Step 1: Telegram
+    if (currentStep === 1) {
       const hasTelegramToken = field("telegram_bot_token").value.trim();
       if (hasTelegramToken && !((setupState?.channels || {}).telegram || {}).connected) {
         await saveTelegram();
@@ -487,7 +536,8 @@ async function handleNext() {
       updateStep();
       return;
     }
-    if (currentStep === 1) {
+    // Step 2: Vibe/profile
+    if (currentStep === 2) {
       await saveProfile();
       currentStep += 1;
       updateStep();
@@ -516,9 +566,13 @@ backButton.addEventListener("click", () => {
   currentStep = Math.max(currentStep - 1, 0);
   updateStep();
 });
-form.addEventListener("change", () => {
+form.addEventListener("change", (e) => {
   seedTimezoneField();
   updateFinishSummary();
+  // Update provider section visibility when radio changes
+  if (e.target && e.target.name === "provider_type") {
+    updateProviderSections();
+  }
 });
 form.addEventListener("input", () => {
   seedTimezoneField();
@@ -532,6 +586,7 @@ activateButton.addEventListener("click", async () => {
   }
 });
 
+updateProviderSections();
 renderUsernameSuggestions();
 seedTimezoneField();
 setPrimaryChannel();

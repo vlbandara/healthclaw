@@ -9,6 +9,7 @@ from loguru import logger
 
 from nanobot.agent.runner import AgentRunSpec, AgentRunner
 from nanobot.agent.tools.registry import ToolRegistry
+from nanobot.agent.tools.platform_onboarding import CompleteOnboardingPlatformTool
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from nanobot.agent.tools.search import GlobTool, GrepTool
@@ -25,6 +26,8 @@ from nanobot.store.base import CheckpointRepository, MemoryRepository, SessionRe
 from nanobot.agent.subagent import SubagentManager
 from nanobot.utils.helpers import build_assistant_message
 from nanobot.agent.context import ContextBuilder
+from nanobot.utils.prompt_templates import render_template
+from nanobot.agent.style import sanitize_assistant_text
 
 
 @dataclass(slots=True)
@@ -33,6 +36,7 @@ class TurnExecutorDeps:
     provider: LLMProvider
     session_repo: SessionRepository
     memory_repo: MemoryRepository
+    onboarding_repo: Any | None = None
     checkpoint_repo: CheckpointRepository | None = None
     workspace_root: Path | None = None
     send_callback: Callable[[OutboundMessage], Any] | None = None
@@ -120,9 +124,41 @@ class TurnExecutor:
 
         history = session.get_history()
         system_prompt = await self._build_system_prompt(tenant_id, workspace)
+
+        onboarding_state = None
+        if self._deps.onboarding_repo is not None:
+            try:
+                onboarding_state = await self._deps.onboarding_repo.get_state(
+                    tenant_id=tenant_id,
+                    session_key=session_key,
+                )
+            except Exception:
+                onboarding_state = None
+
+        if onboarding_state and str(onboarding_state.get("status")) != "complete":
+            draft = onboarding_state.get("draft_submission") or {}
+            onboarding_instructions = render_template("health/onboarding_system.md")
+            system_prompt = (
+                system_prompt
+                + "\n\n---\n\n"
+                + onboarding_instructions
+                + "\n\n---\n\n"
+                + "# Current onboarding draft (may be incomplete)\n\n"
+                + str(draft)
+            )
         messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": message.content}]
 
         tools = self._build_tools(workspace)
+        if onboarding_state and str(onboarding_state.get("status")) != "complete" and self._deps.onboarding_repo is not None:
+            tools.register(
+                CompleteOnboardingPlatformTool(
+                    tenant_id=tenant_id,
+                    session_key=session_key,
+                    memory_repo=self._deps.memory_repo,
+                    onboarding_repo=self._deps.onboarding_repo,
+                    pg_pool=getattr(self._deps.onboarding_repo, "_pool", None),
+                )
+            )
 
         run_spec = AgentRunSpec(
             initial_messages=messages,
@@ -151,7 +187,7 @@ class TurnExecutor:
             return OutboundMessage(channel=message.channel, chat_id=message.chat_id, content=content, reply_to=None)
 
         # Persist: append the new assistant message to session.
-        final_text = (getattr(result, "final_content", None) or "").strip()
+        final_text = sanitize_assistant_text((getattr(result, "final_content", None) or "").strip())
         session.messages.append({"role": "user", "content": message.content})
         session.messages.append(build_assistant_message(final_text))
         await self._deps.session_repo.save(tenant_id, session)

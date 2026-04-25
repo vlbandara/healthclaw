@@ -26,7 +26,7 @@ uv run python scripts/health/seed_demo_workspace.py \
   --force
 ```
 
-The seed data lives in [examples/health/demo_fixture.json](/Users/vinodhlahiru/Documents/Repos/nanobot/examples/health/demo_fixture.json).
+The seed data lives in `[examples/health/demo_fixture.json](../examples/health/demo_fixture.json)`.
 
 ## Local Rehearsal Flow
 

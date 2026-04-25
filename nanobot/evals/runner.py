@@ -9,7 +9,7 @@ from loguru import logger
 
 from nanobot.bus.events import InboundMessage
 from nanobot.config.schema import Config
-from nanobot.evals.judge import Verdict, contains_judge
+from nanobot.evals.judge import Verdict, contains_judge, not_contains_judge
 from nanobot.executor.turn import TurnExecutor, TurnExecutorDeps
 from nanobot.providers.base import LLMProvider, LLMResponse
 from nanobot.store.file import FileMemoryRepository, FileSessionRepository
@@ -130,6 +130,8 @@ async def run_dataset(*, config: Config, dataset: str) -> list[EvalResult]:
         )
         out = await executor.execute(tenant_id=case.tenant_external_id, message=msg)
         verdict: Verdict = contains_judge(output=out.content, expected_contains=case.expected_contains)
+        if verdict.passed and "style:no_ai_phrase" in (case.tags or []):
+            verdict = not_contains_judge(output=out.content, forbidden=["as an ai"])
         results.append(
             EvalResult(
                 case_id=case.id,

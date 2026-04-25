@@ -1,24 +1,24 @@
-# BiomeClaw Hetzner Deployment
+# Healthclaw Hetzner Deployment
 
-This deployment runs the hosted health experience for **BiomeClaw** on a single Hetzner VPS. The public brand is BiomeClaw, but the first release deliberately keeps the internal `nanobot` package, CLI, workspace path, and `NANOBOT_*` environment variables for runtime compatibility.
+This deployment runs the hosted health experience for **Healthclaw** on a single Hetzner VPS. The public brand is Healthclaw, but the first release deliberately keeps the internal `nanobot` package, CLI, workspace path, and `NANOBOT_*` environment variables for runtime compatibility.
 
 Only Caddy is exposed on `80/443`. The orchestrator, worker, Redis, and Postgres services stay on the Docker network.
 
 ## Target Host
 
-- Existing Hetzner VPS: `46.62.231.14`
+- Existing Hetzner VPS: `<YOUR_SERVER_IP>`
 - Recommended profile: 2 vCPU / 4 GB RAM / 40 GB SSD or better
-- Deployment path: `/opt/biomeclaw`
+- Deployment path: `/opt/Healthclaw`
 - Legacy app path to preserve before cutover: `/opt/TradingAgents`
 
 ## Required Files
 
 On the local machine:
 
-- This repo checked out from the future `BiomeClaw` GitHub fork
+- This repo checked out from the future `Healthclaw` GitHub fork
 - A populated local `.env` file based on `.env.example`
 
-For local-only development on your machine, keep a separate `.env.local` based on [.env.local.example](/Users/vinodhlahiru/Documents/Repos/nanobot/.env.local.example) and do not reuse the production `.env`.
+For local-only development on your machine, keep a separate `.env.local` based on `[.env.local.example](.env.local.example)` and do not reuse the production `.env`.
 
 On the server:
 
@@ -27,7 +27,7 @@ On the server:
 
 ## Required Environment
 
-Create `/opt/biomeclaw/.env` from [.env.example](/Users/vinodhlahiru/Documents/Repos/nanobot/.env.example) and provide at least:
+Create `/opt/Healthclaw/.env` from `[.env.example](.env.example)` and provide at least:
 
 ```env
 DOMAIN=health.example.com
@@ -73,20 +73,20 @@ rsync -avz \
   --exclude='results' \
   --exclude='.pytest_cache' \
   --exclude='.ruff_cache' \
-  /Users/vinodhlahiru/Documents/Repos/nanobot/ \
-  root@46.62.231.14:/opt/biomeclaw/
+  ./ \
+  root@<YOUR_SERVER_IP>:/opt/Healthclaw/
 ```
 
 2. Copy the deployment environment file:
 
 ```bash
-scp .env root@46.62.231.14:/opt/biomeclaw/.env
+scp .env root@<YOUR_SERVER_IP>:/opt/Healthclaw/.env
 ```
 
 3. Stop the currently running stack, back up the old app directory, and prepare persistent state:
 
 ```bash
-ssh root@46.62.231.14 '
+ssh root@<YOUR_SERVER_IP> '
 set -eu
 timestamp=$(date +%Y%m%d-%H%M%S)
 if [ -d /opt/TradingAgents ]; then
@@ -97,12 +97,12 @@ mkdir -p /root/.nanobot/workspace /root/.nanobot/whatsapp-auth
 '
 ```
 
-4. Bring up BiomeClaw:
+4. Bring up Healthclaw:
 
 ```bash
-ssh root@46.62.231.14 '
+ssh root@<YOUR_SERVER_IP> '
 set -eu
-cd /opt/biomeclaw
+cd /opt/Healthclaw
 docker compose up -d --build
 '
 ```
@@ -112,8 +112,8 @@ docker compose up -d --build
 Run these after startup:
 
 ```bash
-ssh root@46.62.231.14 'cd /opt/biomeclaw && docker compose ps'
-ssh root@46.62.231.14 'cd /opt/biomeclaw && docker compose logs --tail=200'
+ssh root@<YOUR_SERVER_IP> 'cd /opt/Healthclaw && docker compose ps'
+ssh root@<YOUR_SERVER_IP> 'cd /opt/Healthclaw && docker compose logs --tail=200'
 curl -I https://health.example.com/healthz
 ```
 
@@ -129,9 +129,9 @@ Confirm:
 If the new stack fails validation:
 
 ```bash
-ssh root@46.62.231.14 '
+ssh root@<YOUR_SERVER_IP> '
 set -eu
-cd /opt/biomeclaw && docker compose down || true
+cd /opt/Healthclaw && docker compose down || true
 latest_backup=$(ls -dt /opt/TradingAgents.backup-* 2>/dev/null | head -n 1)
 if [ -n "$latest_backup" ]; then
   mv "$latest_backup" /opt/TradingAgents

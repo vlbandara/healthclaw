@@ -1065,13 +1065,14 @@ class AgentLoop:
                 metadata={**dict(msg.metadata or {}), "render_as": "text"},
             )
 
-        if is_health_workspace(self.workspace) and msg.channel in {"telegram", "whatsapp"}:
+        if is_health_workspace(self.workspace):
             try:
                 health_workspace = HealthWorkspace(self.workspace)
-                health_workspace.bind_chat_session(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                )
+                if msg.channel in {"telegram", "whatsapp"}:
+                    health_workspace.bind_chat_session(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                    )
                 if not is_internal_turn and not key.startswith(("heartbeat", "autonomy", "cron:")):
                     health_workspace.record_user_activity()
             except Exception:

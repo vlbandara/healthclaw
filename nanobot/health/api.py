@@ -144,7 +144,7 @@ def _default_onboarding_submission(*, setup_payload: dict[str, Any]) -> dict[str
 
 class ProviderSetupSubmission(BaseModel):
     provider: str = "minimax"
-    api_key: str = Field(min_length=1)
+    api_key: str = Field(default="")  # Ollama does not require a key
 
 
 class TelegramSetupSubmission(BaseModel):
