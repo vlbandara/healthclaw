@@ -9,10 +9,12 @@ import pytest
 
 from nanobot.agent.loop import AgentLoop
 from nanobot.agent.memory import Dream, MemoryStore
-from nanobot.agent.tools.health_profile import SetPreferredNameTool
+from nanobot.agent.tools.health_profile import SetPreferredNameTool, UpdateHealthProfileTool
+from nanobot.bus.events import InboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.cli.commands import _pick_routable_heartbeat_target
 from nanobot.health.bootstrap import persist_health_onboarding, write_health_workspace_assets
+from nanobot.health.continuity import TemporalContext
 from nanobot.health.storage import HealthWorkspace
 from nanobot.session.manager import SessionManager
 
@@ -22,6 +24,12 @@ def _health_profile(preferred_channel: str = "whatsapp") -> dict:
         "mode": "health",
         "preferred_channel": preferred_channel,
         "timezone": "UTC",
+        "last_seen_local_date": "",
+        "proactive_enabled": False,
+        "voice_preferred": False,
+        "friction_points": [],
+        "communication_preferences": [],
+        "last_open_loop": "none",
         "language": "en",
         "demographics": {},
         "routines": {},
@@ -43,6 +51,29 @@ def _enable_health(workspace: Path) -> None:
     profile = _health_profile()
     health.save_profile(profile)
     write_health_workspace_assets(workspace, profile)
+
+
+def test_health_workspace_renders_extended_skills_and_prompt_refs(tmp_path: Path) -> None:
+    _enable_health(tmp_path)
+
+    for skill_name in (
+        "sleep-support",
+        "stress-reset",
+        "medication-support",
+        "movement-recovery",
+        "nutrition-support",
+        "personal-growth",
+        "focus-learning",
+        "life-admin",
+    ):
+        assert (tmp_path / "skills" / skill_name / "SKILL.md").exists()
+
+    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    heartbeat = (tmp_path / "HEARTBEAT.md").read_text(encoding="utf-8")
+    assert "update_health_profile" in agents
+    assert "sleep-support" in agents
+    assert "skills/sleep-support/SKILL.md" in heartbeat
+    assert "skills/life-admin/SKILL.md" in heartbeat
 
 
 @pytest.mark.asyncio
@@ -82,8 +113,11 @@ async def test_dream_injects_health_appendix(tmp_path: Path, monkeypatch: pytest
     monkeypatch.setattr(dream._runner, "run", fake_run)
 
     assert await dream.run() is True
-    system_prompt = provider.chat_with_retry.await_args.kwargs["messages"][0]["content"]
-    assert "Health Dream Appendix" in system_prompt
+    prompts = [
+        call.kwargs["messages"][0]["content"]
+        for call in provider.chat_with_retry.await_args_list
+    ]
+    assert any("Health Dream Appendix" in prompt for prompt in prompts)
 
 
 def test_preferred_channel_is_selected_for_heartbeat(tmp_path: Path) -> None:
@@ -322,3 +356,137 @@ async def test_set_preferred_name_tool_persists_alias(
     assert result == "Saved preferred name: Vin"
     assert health.load_preferred_name(secret="test-health-vault-key") == "Vin"
     assert "Vin" in vault["identifiers"]["person_names"]
+
+
+@pytest.mark.asyncio
+async def test_update_health_profile_tool_persists_timezone_and_related_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HEALTH_VAULT_KEY", "test-health-vault-key")
+    _enable_health(tmp_path)
+    health = HealthWorkspace(tmp_path)
+    health.save_vault(
+        {
+            "identifiers": {"person_names": []},
+            "contact": {"full_name": "", "location": ""},
+        },
+        secret="test-health-vault-key",
+    )
+
+    tool = UpdateHealthProfileTool(tmp_path)
+    result = await tool.execute(
+        timezone="Asia/Colombo",
+        location="Colombo, Sri Lanka",
+        wake_time="06:30",
+        sleep_time="22:15",
+        preferred_name="Vin",
+        preferred_channel="telegram",
+        proactive_enabled=True,
+        voice_preferred=True,
+        last_seen_local_date="2026-04-15",
+    )
+
+    profile = health.load_profile()
+    assert "timezone=Asia/Colombo" in result
+    assert profile["timezone"] == "Asia/Colombo"
+    assert profile["location"] == "Colombo, Sri Lanka"
+    assert profile["routines"]["wake_time"] == "06:30"
+    assert profile["routines"]["sleep_time"] == "22:15"
+    assert profile["preferred_channel"] == "telegram"
+    assert profile["proactive_enabled"] is True
+    assert profile["voice_preferred"] is True
+    assert profile["last_seen_local_date"] == "2026-04-15"
+    assert health.load_preferred_name(secret="test-health-vault-key") == "Vin"
+    assert "Timezone: `Asia/Colombo`" in (tmp_path / "USER.md").read_text(encoding="utf-8")
+    assert "Morning check-in after 06:30 local time." in (tmp_path / "HEARTBEAT.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_update_health_profile_tool_rejects_invalid_timezone(tmp_path: Path) -> None:
+    _enable_health(tmp_path)
+
+    tool = UpdateHealthProfileTool(tmp_path)
+    result = await tool.execute(timezone="Mars/OlympusMons")
+
+    assert "Error:" in result
+    assert "Unknown timezone" in result
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_refreshes_health_timezone_from_profile_updates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_health(tmp_path)
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    provider.generation.max_tokens = 4096
+
+    loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path)
+    tool = UpdateHealthProfileTool(tmp_path)
+    await tool.execute(timezone="Asia/Colombo")
+
+    async def fake_run(initial_messages, *args, **kwargs):
+        return "fine", [], initial_messages + [{"role": "assistant", "content": "fine"}]
+
+    monkeypatch.setattr(loop, "_run_agent_loop", fake_run)
+
+    await loop.process_direct("hey", channel="telegram", chat_id="123")
+
+    assert loop.context.timezone == "Asia/Colombo"
+
+
+@pytest.mark.asyncio
+async def test_health_runtime_behavior_overlay_is_injected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_health(tmp_path)
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    provider.generation.max_tokens = 4096
+
+    loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path)
+    captured: list[list[dict]] = []
+
+    temporal = TemporalContext(
+        timezone="Asia/Colombo",
+        local_timestamp="2026-04-15 23:30",
+        local_date="2026-04-15",
+        weekday="Wednesday",
+        part_of_day="late_night",
+        quiet_hours=True,
+        days_since_last_user_message=3,
+        first_touch_today=True,
+    )
+
+    monkeypatch.setattr(
+        loop,
+        "_apply_health_continuity",
+        lambda **kwargs: ({}, temporal, "ground", "soft_open"),
+    )
+
+    async def fake_run(initial_messages, *args, **kwargs):
+        captured.append(initial_messages)
+        return "fine", [], initial_messages + [{"role": "assistant", "content": "fine"}]
+
+    monkeypatch.setattr(loop, "_run_agent_loop", fake_run)
+
+    await loop._process_message(
+        InboundMessage(
+            channel="telegram",
+            sender_id="user",
+            chat_id="123",
+            content="I need a reset",
+            metadata={"input_mode": "voice"},
+        ),
+        session_key="telegram:123",
+    )
+
+    system_prompt = captured[0][0]["content"]
+    user_content = captured[0][-1]["content"]
+    assert "Health Runtime Behavior" in system_prompt
+    assert "Response mode for this turn: ground" in system_prompt
+    assert "Input mode: voice" in system_prompt
+    assert "Variation Mode: ground" in user_content

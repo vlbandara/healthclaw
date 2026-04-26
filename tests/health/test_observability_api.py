@@ -40,6 +40,19 @@ def test_readyz_and_metrics_include_runtime_snapshot(
 ) -> None:
     client, _ = _make_client(tmp_path, monkeypatch)
     client.app.state.instance_monitor_task = _ActiveTask()
+    monkeypatch.setattr(
+        "nanobot.health.api._host_resource_snapshot",
+        lambda _app: {
+            "host": {
+                "cpu": {"count": 2, "load1": 0.2, "load5": 0.1, "load15": 0.05},
+                "memory": {"totalBytes": 1024, "availableBytes": 512, "usedBytes": 512},
+                "disk": {"path": "/", "totalBytes": 2048, "usedBytes": 1024, "availableBytes": 1024, "usedPercent": 50.0},
+                "swap": {"totalBytes": 0, "usedBytes": 0, "freeBytes": 0},
+                "collectedAt": "2026-04-09T08:25:11+00:00",
+            },
+            "containers": {"topConsumers": [{"name": "nanohealth-setup_demo", "memoryUsageBytes": 123}]},
+        },
+    )
 
     ready = client.get("/readyz")
     assert ready.status_code == 200
@@ -53,6 +66,8 @@ def test_readyz_and_metrics_include_runtime_snapshot(
     assert payload["release"]["deployedAt"] == "2026-04-08T00:00:00Z"
     assert payload["readiness"]["status"] == "ok"
     assert payload["runtime"]["requests"]["success"] >= 1
+    assert payload["host"]["disk"]["usedPercent"] == 50.0
+    assert payload["containers"]["topConsumers"][0]["name"] == "nanohealth-setup_demo"
 
 
 def test_readyz_reports_degraded_registry_dependency(

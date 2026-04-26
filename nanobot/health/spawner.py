@@ -67,14 +67,40 @@ class HealthInstanceSpawner:
         network: str | None = None,
     ):
         self.docker_base_url = docker_base_url or _env("DOCKER_HOST", "")
-        self.image = image or _env("NANOBOT_HEALTH_INSTANCE_IMAGE", "nanobot-ai:latest")
+        self.image = image or _env("NANOBOT_HEALTH_INSTANCE_IMAGE", "Healthclaw-orchestrator:latest")
         self.network = network or _env("NANOBOT_HEALTH_INSTANCE_NETWORK", "")
+        self._detected_network: str | None = None
 
     def _client(self):
         docker = _docker()
         if self.docker_base_url:
             return docker.DockerClient(base_url=self.docker_base_url)
         return docker.from_env()
+
+    def _resolve_network(self) -> str:
+        if self.network:
+            return self.network
+        if self._detected_network is not None:
+            return self._detected_network
+
+        hostname = _env("HOSTNAME", "")
+        if not hostname:
+            self._detected_network = ""
+            return self._detected_network
+
+        try:
+            container = self._client().containers.get(hostname)
+            networks = list((container.attrs.get("NetworkSettings", {}).get("Networks") or {}).keys())
+        except Exception:
+            self._detected_network = ""
+            return self._detected_network
+
+        for name in networks:
+            if name not in {"bridge", "host", "none"}:
+                self._detected_network = name
+                return self._detected_network
+        self._detected_network = networks[0] if networks else ""
+        return self._detected_network
 
     def _spawn_mode(self) -> str:
         """Spawn mode: 'docker' (default), 'swarm', or 'remote'."""
@@ -272,7 +298,7 @@ class HealthInstanceSpawner:
             restart_policy=self._restart_policy(),
             mem_limit=self._memory_limit(tier=tier),
             nano_cpus=nano_cpus,
-            network=self.network or None,
+            network=self._resolve_network() or None,
             labels={
                 self._LABEL_MANAGED_BY: "1",
                 self._LABEL_USER_ID: user_id,
@@ -388,7 +414,7 @@ class HealthInstanceSpawner:
         service = client.services.create(
             name=name,
             task_template=task_tmpl,
-            networks=[self.network] if self.network else None,
+            networks=[self._resolve_network()] if self._resolve_network() else None,
             labels={
                 self._LABEL_MANAGED_BY: "1",
                 self._LABEL_USER_ID: user_id,
@@ -516,6 +542,7 @@ class HealthInstanceSpawner:
                 onboarding_submission,
                 invite=None,
                 secret=get_health_vault_secret(),
+                stable_token_hint=user_id,
             )
 
             # Mark telegram connected in setup.json for hosted overrides, if desired.
@@ -556,4 +583,3 @@ class HealthInstanceSpawner:
             volume_name=(str(self._host_workspace_dir(user_id)) if storage_mode == "bind" else volume_name),
             workspace_path=self._workspace_in_container(),
         )
-

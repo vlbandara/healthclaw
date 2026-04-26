@@ -1,26 +1,26 @@
-/* BiomeClaw design tokens — shared across landing, setup, onboard, chat */
+/* Healthclaw design tokens — shared across landing, setup, onboard, chat */
 :root {
-  --nh-font-sans: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
-  --nh-color-bg-top: #f7f3ea;
-  --nh-color-bg-bottom: #eef1ea;
-  --nh-color-ink: #203028;
-  --nh-color-muted: #52655a;
-  --nh-color-accent: #1f6b49;
-  --nh-color-accent-soft: rgba(31, 107, 73, 0.08);
-  --nh-color-warm: #9e5e1e;
-  --nh-color-night: #1a2430;
-  --nh-color-night-muted: #8fa3b0;
-  --nh-color-card: rgba(255, 255, 255, 0.92);
-  --nh-color-glow: rgba(237, 185, 104, 0.35);
-  --nh-radius-card: 24px;
-  --nh-radius-pill: 999px;
-  --nh-radius-input: 14px;
-  --nh-shadow-card: 0 24px 70px rgba(32, 48, 40, 0.12);
-  --nh-space-xs: 6px;
-  --nh-space-sm: 12px;
-  --nh-space-md: 18px;
-  --nh-space-lg: 28px;
-  --nh-text-eyebrow: 0.75rem;
-  --nh-text-lede: 1.05rem;
-  --nh-max-read: 720px;
+  --nh-font-sans: "Inter", "system-ui", "sans-serif";
+  --nh-color-bg-top: #08080a;
+  --nh-color-bg-bottom: #121317;
+  --nh-color-ink: #f3f4f6;
+  --nh-color-muted: #9ca3af;
+  --nh-color-accent: #10b981; /* Emerald */
+  --nh-color-accent-soft: rgba(16, 185, 129, 0.12);
+  --nh-color-warm: #fbbf24;
+  --nh-color-night: #1f2937;
+  --nh-color-night-muted: #6b7280;
+  --nh-color-card: rgba(24, 24, 27, 0.7);
+  --nh-color-glow: rgba(16, 185, 129, 0.15);
+  --nh-radius-card: 28px;
+  --nh-radius-pill: 9999px;
+  --nh-radius-input: 16px;
+  --nh-shadow-card: 0 40px 100px -20px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --nh-space-xs: 8px;
+  --nh-space-sm: 16px;
+  --nh-space-md: 24px;
+  --nh-space-lg: 32px;
+  --nh-text-eyebrow: 0.8rem;
+  --nh-text-lede: 1.1rem;
+  --nh-max-read: 760px;
 }

@@ -4,7 +4,7 @@
       "workspace": "/data/workspace",
       "provider": "minimax",
       "model": "MiniMax-M2.7",
-      "temperature": 0.55,
+      "temperature": 0.35,
       "timezone": "UTC",
       "maxToolIterations": 8,
       "dream": {
@@ -26,6 +26,12 @@
       "allowFrom": ["*"],
       "sendProgress": true,
       "sendToolHints": false
+    },
+    "whatsapp": {
+      "enabled": false,
+      "bridgeUrl": "ENV:NANOBOT_WHATSAPP_BRIDGE_URL",
+      "bridgeToken": "ENV:WHATSAPP_BRIDGE_TOKEN",
+      "allowFrom": ["*"]
     }
   },
   "gateway": {

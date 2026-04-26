@@ -1,26 +1,58 @@
-.worktrees/
-.assets
-.docs
+# Environment & secrets
 .env
-.web
+.env.local
+.env.prod
+.env.staging
+*.key
+*.pem
+
+# Runtime state
+.local/
+.worktrees/
+nanobot-state/
+whatsapp-auth/
+
+# Python
 *.pyc
-dist/
-build/
-*.egg-info/
-*.egg
-*.pycs
 *.pyo
 *.pyd
 *.pyw
 *.pyz
 *.pywz
 *.pyzz
+*.egg
+*.egg-info/
+dist/
+build/
+__pycache__/
 .venv/
 venv/
-__pycache__/
-poetry.lock
 .pytest_cache/
-botpy.log
-nano.*.save
+.ruff_cache/
+
+# Node.js
+node_modules/
+
+# IDE & OS
 .DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+nano.*.save
+
+# Logs
+botpy.log
+
+# Internal assets (not tracked)
+.assets
+.docs
+.web
+
+# Lock files (regenerated)
+poetry.lock
 uv.lock
+
+# Cursor IDE
+.cursor/

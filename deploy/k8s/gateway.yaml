@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nanobot-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nanobot-gateway
+  template:
+    metadata:
+      labels:
+        app: nanobot-gateway
+    spec:
+      containers:
+        - name: gateway
+          image: ghcr.io/your-org/nanobot:latest
+          args: ["nanobot", "serve", "--host", "0.0.0.0", "--port", "8080"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NANOBOT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nanobot-secrets
+                  key: database_url
+            - name: ARQ_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nanobot-secrets
+                  key: redis_url
+            - name: NANOBOT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nanobot-secrets
+                  key: api_key
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nanobot-gateway
+spec:
+  selector:
+    app: nanobot-gateway
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+      name: http
+

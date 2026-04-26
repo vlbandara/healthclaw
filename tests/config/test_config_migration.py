@@ -239,10 +239,54 @@ def test_health_runtime_overrides_do_not_clamp_temperature(tmp_path, monkeypatch
     assert provider_config.agents.defaults.temperature == 0.8
 
 
+def test_load_config_applies_active_hosted_whatsapp_overrides(tmp_path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "agents": {
+                    "defaults": {
+                        "workspace": str(workspace),
+                        "provider": "minimax",
+                        "model": "MiniMax-M2.7",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HEALTH_VAULT_KEY", "test-health-vault-key")
+    monkeypatch.setenv("WHATSAPP_BRIDGE_TOKEN", "whatsapp-bridge-secret")
+    monkeypatch.setenv("HEALTH_WHATSAPP_BRIDGE_URL", "ws://bridge.internal:3001")
+
+    health = HealthWorkspace(workspace)
+    health.create_setup_session()
+    health.store_provider_secret(
+        provider_name="minimax",
+        model="MiniMax-M2.7",
+        api_key="minimax-live-key",
+        secret="test-health-vault-key",
+    )
+    health.update_whatsapp_status(
+        status="connected",
+        jid="15550001111@s.whatsapp.net",
+        phone="15550001111",
+        chat_url="https://wa.me/15550001111",
+    )
+    health.mark_setup_active()
+
+    config = load_config(config_path)
+
+    assert config.channels.whatsapp["enabled"] is True
+    assert config.channels.whatsapp["bridge_url"] == "ws://bridge.internal:3001"
+    assert config.channels.whatsapp["bridge_token"] == "whatsapp-bridge-secret"
+
+
 def test_health_instance_config_template_uses_livelier_temperature() -> None:
     config_path = Path("nanobot/health/config_template.json")
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    assert config["agents"]["defaults"]["temperature"] == 0.55
+    assert config["agents"]["defaults"]["temperature"] == 0.35
 
 
 def test_load_config_applies_active_hosted_openrouter_overrides(tmp_path, monkeypatch) -> None:
@@ -334,6 +378,7 @@ def test_onboard_does_not_crash_with_legacy_memory_window(tmp_path, monkeypatch)
     monkeypatch.setattr("nanobot.cli.commands.get_workspace_path", lambda _workspace=None: workspace)
 
     from typer.testing import CliRunner
+
     from nanobot.cli.commands import app
     runner = CliRunner()
     result = runner.invoke(app, ["onboard"], input="n\n")
@@ -380,6 +425,7 @@ def test_onboard_refresh_backfills_missing_channel_fields(tmp_path, monkeypatch)
     )
 
     from typer.testing import CliRunner
+
     from nanobot.cli.commands import app
     runner = CliRunner()
     result = runner.invoke(app, ["onboard"], input="n\n")

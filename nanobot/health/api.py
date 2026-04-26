@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextvars
+import io
 import json
 import logging
 import os
+import shutil
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -18,7 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from nanobot.health import metrics as health_metrics
 from nanobot.health.bootstrap import persist_health_onboarding
@@ -39,7 +43,12 @@ from nanobot.health.hosted import (
 )
 from nanobot.health.registry import HealthRegistry
 from nanobot.health.spawner import HealthInstanceSpawner
-from nanobot.health.storage import HealthWorkspace, get_health_vault_secret
+from nanobot.health.storage import (
+    HealthWorkspace,
+    get_health_vault_secret,
+    normalize_clock_time,
+    validate_health_timezone,
+)
 
 logger = logging.getLogger("nanobot.health.api")
 _request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("nanobot_health_request_id", default="")
@@ -48,6 +57,10 @@ _request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("nanobot_h
 class SignupSubmission(BaseModel):
     name: str = Field(min_length=1)
     timezone: str = "UTC"
+    resume_setup_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("resumeSetupToken", "resume_setup_token"),
+    )
 
 
 class Phase1Submission(BaseModel):
@@ -70,6 +83,16 @@ class Phase1Submission(BaseModel):
     wake_time: str = ""
     sleep_time: str = ""
     consents: list[str] = Field(default_factory=list)
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, value: str) -> str:
+        return validate_health_timezone(value or "UTC")
+
+    @field_validator("wake_time", "sleep_time")
+    @classmethod
+    def _validate_clock(cls, value: str, info) -> str:
+        return normalize_clock_time(value, field_name=info.field_name)
 
 
 class Phase2Submission(BaseModel):
@@ -97,10 +120,14 @@ def _default_onboarding_submission(*, setup_payload: dict[str, Any]) -> dict[str
     preferred_channel = "telegram"
     timezone = "UTC"
     language = "en"
+    connected_channels = _connected_setup_channels(setup_payload)
     try:
         timezone = str((setup_payload.get("profile") or {}).get("phase1", {}).get("timezone") or timezone)
         language = str((setup_payload.get("profile") or {}).get("phase1", {}).get("language") or language)
-        preferred_channel = str((setup_payload.get("profile") or {}).get("phase1", {}).get("preferred_channel") or preferred_channel)
+        preferred_channel = str(
+            (setup_payload.get("profile") or {}).get("phase1", {}).get("preferred_channel")
+            or (connected_channels[0] if connected_channels else preferred_channel)
+        )
     except Exception:
         pass
     return OnboardingSubmission(
@@ -122,7 +149,7 @@ def _default_onboarding_submission(*, setup_payload: dict[str, Any]) -> dict[str
 
 class ProviderSetupSubmission(BaseModel):
     provider: str = "minimax"
-    api_key: str = Field(min_length=1)
+    api_key: str = Field(default="")  # Ollama does not require a key
 
 
 class TelegramSetupSubmission(BaseModel):
@@ -178,6 +205,123 @@ def _runtime_metrics_state() -> dict[str, Any]:
             "version": os.environ.get("APP_RELEASE", "").strip(),
             "deployedAt": os.environ.get("APP_DEPLOYED_AT", "").strip(),
         },
+    }
+
+
+def _read_meminfo() -> dict[str, int]:
+    out: dict[str, int] = {}
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            key, _, raw = line.partition(":")
+            value = raw.strip().split(" ", 1)[0]
+            if value.isdigit():
+                out[key] = int(value) * 1024
+    except Exception:
+        return {}
+    return out
+
+
+def _container_resource_snapshot(app: FastAPI) -> dict[str, Any]:
+    top_consumers: list[dict[str, Any]] = []
+    try:
+        containers = app.state.spawner.list_instances(all=True)
+    except Exception:
+        containers = []
+
+    for container in containers:
+        try:
+            container.reload()
+        except Exception:
+            pass
+        attrs = (getattr(container, "attrs", {}) or {})
+        state = attrs.get("State", {}) or {}
+        name = str(getattr(container, "name", "") or "").lstrip("/")
+        entry: dict[str, Any] = {
+            "name": name,
+            "status": str(state.get("Status") or getattr(container, "status", "") or ""),
+        }
+        limit_bytes = int(((attrs.get("HostConfig", {}) or {}).get("Memory") or 0))
+        if limit_bytes > 0:
+            entry["memoryLimitBytes"] = limit_bytes
+        try:
+            stats = container.stats(stream=False)
+        except Exception:
+            stats = {}
+        if isinstance(stats, dict):
+            mem_stats = stats.get("memory_stats") or {}
+            usage_bytes = int(mem_stats.get("usage") or 0)
+            cache_bytes = int(((mem_stats.get("stats") or {}).get("cache") or 0))
+            usage_bytes = max(0, usage_bytes - cache_bytes)
+            if usage_bytes > 0:
+                entry["memoryUsageBytes"] = usage_bytes
+            if limit_bytes > 0 and usage_bytes > 0:
+                entry["memoryPercent"] = round((usage_bytes / limit_bytes) * 100.0, 2)
+        top_consumers.append(entry)
+
+    top_consumers.sort(
+        key=lambda item: (
+            int(item.get("memoryUsageBytes") or 0),
+            float(item.get("memoryPercent") or 0.0),
+        ),
+        reverse=True,
+    )
+    return {"topConsumers": top_consumers[:5]}
+
+
+def _host_resource_snapshot(app: FastAPI) -> dict[str, Any]:
+    now = datetime.now(UTC).isoformat()
+    meminfo = _read_meminfo()
+    cpu_count = os.cpu_count() or 0
+    try:
+        load1, load5, load15 = os.getloadavg()
+    except Exception:
+        load1 = load5 = load15 = 0.0
+
+    total_mem = int(meminfo.get("MemTotal") or 0)
+    available_mem = int(meminfo.get("MemAvailable") or 0)
+    used_mem = max(0, total_mem - available_mem) if total_mem and available_mem else 0
+    swap_total = int(meminfo.get("SwapTotal") or 0)
+    swap_free = int(meminfo.get("SwapFree") or 0)
+    swap_used = max(0, swap_total - swap_free) if swap_total else 0
+
+    try:
+        disk = shutil.disk_usage("/")
+        disk_total = int(disk.total)
+        disk_free = int(disk.free)
+        disk_used = int(disk.used)
+        disk_pct = round((disk_used / disk_total) * 100.0, 2) if disk_total else 0.0
+    except Exception:
+        disk_total = disk_free = disk_used = 0
+        disk_pct = 0.0
+
+    return {
+        "host": {
+            "collectedAt": now,
+            "cpu": {
+                "count": cpu_count,
+                "load1": round(load1, 2),
+                "load5": round(load5, 2),
+                "load15": round(load15, 2),
+            },
+            "memory": {
+                "totalBytes": total_mem,
+                "availableBytes": available_mem,
+                "usedBytes": used_mem,
+            },
+            "swap": {
+                "totalBytes": swap_total,
+                "usedBytes": swap_used,
+                "freeBytes": swap_free,
+            },
+            "disk": {
+                "path": "/",
+                "totalBytes": disk_total,
+                "usedBytes": disk_used,
+                "availableBytes": disk_free,
+                "usedPercent": disk_pct,
+            },
+        },
+        "containers": _container_resource_snapshot(app),
     }
 
 
@@ -283,6 +427,78 @@ def _channel_links() -> dict[str, str]:
     return {name: url for name, url in links.items() if url}
 
 
+def _connected_setup_channels(setup_payload: dict[str, Any]) -> list[str]:
+    channels = setup_payload.get("channels", {}) or {}
+    return [
+        name
+        for name, meta in channels.items()
+        if isinstance(meta, dict) and meta.get("connected")
+    ]
+
+
+def _whatsapp_qr_svg_data_uri(qr_value: str) -> str:
+    raw = str(qr_value or "").strip()
+    if not raw:
+        return ""
+    try:
+        import qrcode
+        from qrcode.image.svg import SvgPathImage
+
+        image = qrcode.make(raw, image_factory=SvgPathImage, box_size=8, border=2)
+        output = io.BytesIO()
+        image.save(output)
+        payload = base64.b64encode(output.getvalue()).decode("ascii")
+        return f"data:image/svg+xml;base64,{payload}"
+    except Exception:
+        return ""
+
+
+def _apply_setup_channel_config(
+    config_json: dict[str, Any],
+    *,
+    channels_payload: dict[str, Any],
+) -> dict[str, Any]:
+    channels = config_json.setdefault("channels", {})
+    telegram_connected = bool((channels_payload.get("telegram") or {}).get("connected"))
+    whatsapp_connected = bool((channels_payload.get("whatsapp") or {}).get("connected"))
+
+    telegram_cfg = dict(channels.get("telegram") or {})
+    telegram_cfg["enabled"] = telegram_connected
+    channels["telegram"] = telegram_cfg
+
+    whatsapp_cfg = dict(channels.get("whatsapp") or {})
+    whatsapp_cfg.setdefault("bridgeUrl", "ENV:NANOBOT_WHATSAPP_BRIDGE_URL")
+    whatsapp_cfg.setdefault("bridgeToken", "ENV:WHATSAPP_BRIDGE_TOKEN")
+    whatsapp_cfg.setdefault("allowFrom", ["*"])
+    whatsapp_cfg["enabled"] = whatsapp_connected
+    channels["whatsapp"] = whatsapp_cfg
+    return config_json
+
+
+def _build_setup_spawn_env(
+    *,
+    payload: dict[str, Any],
+    health_secret: str,
+    telegram_token: str,
+) -> dict[str, str]:
+    env = {
+        "MINIMAX_API_KEY": os.environ.get("MINIMAX_API_KEY", "").strip(),
+        "OPENROUTER_API_KEY": os.environ.get("OPENROUTER_API_KEY", "").strip(),
+        "GROQ_API_KEY": os.environ.get("GROQ_API_KEY", "").strip(),
+        "HEALTH_VAULT_KEY": os.environ.get("HEALTH_VAULT_KEY", "").strip() or health_secret,
+    }
+    if (payload.get("channels", {}).get("telegram") or {}).get("connected") and telegram_token:
+        env["TELEGRAM_BOT_TOKEN"] = telegram_token
+    if (payload.get("channels", {}).get("whatsapp") or {}).get("connected"):
+        bridge_token = get_whatsapp_bridge_token()
+        bridge_url = get_whatsapp_bridge_url()
+        if bridge_token:
+            env["WHATSAPP_BRIDGE_TOKEN"] = bridge_token
+        if bridge_url:
+            env["NANOBOT_WHATSAPP_BRIDGE_URL"] = bridge_url
+    return env
+
+
 def _current_channel_links(
     health: HealthWorkspace,
     *,
@@ -354,6 +570,8 @@ def _setup_status_payload(
     channels["whatsapp"] = whatsapp
 
     links = _current_channel_links(health, fallback_links=fallback_links, bridge_snapshot=bridge_snapshot)
+    provider_ready = bool(provider.get("validated_at") or os.environ.get("MINIMAX_API_KEY", "").strip())
+    has_connected_channel = any(bool(item.get("connected")) for item in channels.values() if isinstance(item, dict))
     return {
         "token": setup.get("token"),
         "state": setup.get("state"),
@@ -361,11 +579,7 @@ def _setup_status_payload(
         "channels": channels,
         "profile": health.load_profile_draft_submission(secret=secret) or {},
         "channelLinks": links,
-        "activationReady": bool(
-            provider.get("validated_at")
-            and any(bool(item.get("connected")) for item in channels.values() if isinstance(item, dict))
-                # Minimal onboarding: profile is optional; activation only requires a connected channel.
-        ),
+        "activationReady": bool(provider_ready and has_connected_channel),
     }
 
 
@@ -567,23 +781,68 @@ def _global_health(app: FastAPI) -> HealthWorkspace:
     return HealthWorkspace(app.state.workspace_root)
 
 
+async def _cleanup_stale_setup_sessions(app: FastAPI) -> None:
+    root = _staging_root(app.state.workspace_root)
+    if not root.exists():
+        return
+
+    stale_tokens: list[str] = []
+    for session_dir in root.iterdir():
+        if not session_dir.is_dir():
+            continue
+        health = HealthWorkspace(session_dir)
+        setup = health.load_setup()
+        if not setup:
+            continue
+        if setup.get("completed_at"):
+            continue
+        if not health.setup_expired():
+            continue
+        stale_tokens.append(session_dir.name)
+        shutil.rmtree(session_dir, ignore_errors=True)
+
+    if stale_tokens:
+        try:
+            await app.state.registry.delete_setup_tokens(stale_tokens)
+        except Exception:
+            logger.exception("health.setup.cleanup_registry_failed")
+
+
 def create_app() -> FastAPI:
     _configure_logging()
     workspace_root = _resolve_workspace()
-    app = FastAPI(title="nanobot health onboarding")
-    app.state.workspace_root = workspace_root
-    app.state.health_secret = get_health_vault_secret()
-    app.state.channel_links = _channel_links()
-    app.state.registry = HealthRegistry()
-    app.state.spawner = HealthInstanceSpawner()
-    app.state.runtime_metrics = _runtime_metrics_state()
-
+    channel_links = _channel_links()
     monitor = WhatsAppBridgeMonitor(
         bridge_url=get_whatsapp_bridge_url(),
         bridge_token=get_whatsapp_bridge_token(),
-        fallback_chat_url=app.state.channel_links.get("whatsapp", ""),
+        fallback_chat_url=channel_links.get("whatsapp", ""),
         on_status=lambda _payload: None,
     )
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        await _cleanup_stale_setup_sessions(app)
+        await monitor.start()
+        app.state.instance_monitor_task = asyncio.create_task(_container_health_monitor(app))
+        try:
+            yield
+        finally:
+            await monitor.stop()
+            task = getattr(app.state, "instance_monitor_task", None)
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except Exception:
+                    pass
+
+    app = FastAPI(title="nanobot health onboarding", lifespan=lifespan)
+    app.state.workspace_root = workspace_root
+    app.state.health_secret = get_health_vault_secret()
+    app.state.channel_links = channel_links
+    app.state.registry = HealthRegistry()
+    app.state.spawner = HealthInstanceSpawner()
+    app.state.runtime_metrics = _runtime_metrics_state()
     app.state.whatsapp_monitor = monitor
 
     template_dir = Path(__file__).with_name("templates")
@@ -665,22 +924,6 @@ def create_app() -> FastAPI:
             request_id=_request_id_from_request(request),
         )
 
-    @app.on_event("startup")
-    async def startup() -> None:
-        await monitor.start()
-        app.state.instance_monitor_task = asyncio.create_task(_container_health_monitor(app))
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        await monitor.stop()
-        task = getattr(app.state, "instance_monitor_task", None)
-        if task is not None:
-            task.cancel()
-            try:
-                await task
-            except Exception:
-                pass
-
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
@@ -702,6 +945,7 @@ def create_app() -> FastAPI:
         snap = monitor_state.get("last_snapshot") or {}
         ready_ok, readiness_checks = await _readiness_snapshot(app)
         runtime = app.state.runtime_metrics
+        resources = _host_resource_snapshot(app)
         # Prometheus-style text is nice, but JSON is friendlier for early stages.
         return JSONResponse(
             {
@@ -728,6 +972,8 @@ def create_app() -> FastAPI:
                     "restartSuccess": monitor_state.get("restart_success", 0),
                     "restartFailures": monitor_state.get("restart_failures", 0),
                 },
+                "host": resources["host"],
+                "containers": resources["containers"],
             }
         )
 
@@ -737,6 +983,23 @@ def create_app() -> FastAPI:
 
     @app.post("/api/signup")
     async def signup(request: Request, submission: SignupSubmission) -> JSONResponse:
+        resume_token = str(submission.resume_setup_token or "").strip()
+        if resume_token:
+            try:
+                existing_user = await app.state.registry.get_by_setup_token(resume_token)
+                existing_health = _health_for_setup_token(app, resume_token)
+                existing_setup = existing_health.validate_setup_token(resume_token)
+                if existing_user and existing_setup and existing_user.status == "setup":
+                    return JSONResponse(
+                        {
+                            "status": "ok",
+                            "setupToken": existing_user.setup_token,
+                            "userId": existing_user.id,
+                            "resumed": True,
+                        }
+                    )
+            except Exception:
+                logger.exception("health.signup.resume_lookup_failed")
         try:
             user = await app.state.registry.create_user(
                 name=submission.name,
@@ -761,7 +1024,7 @@ def create_app() -> FastAPI:
         # Create a per-user staging workspace keyed by the registry setup token.
         health = _health_for_setup_token(app, user.setup_token)
         health.create_setup_session_with_token(user.setup_token)
-        return JSONResponse({"status": "ok", "setupToken": user.setup_token, "userId": user.id})
+        return JSONResponse({"status": "ok", "setupToken": user.setup_token, "userId": user.id, "resumed": False})
 
     @app.get("/setup/{setup_token}", response_class=HTMLResponse)
     async def setup_form(request: Request, setup_token: str) -> HTMLResponse:
@@ -871,6 +1134,7 @@ def create_app() -> FastAPI:
             {
                 "status": snapshot.get("status", "waiting"),
                 "qr": snapshot.get("qr", ""),
+                "qrSvg": _whatsapp_qr_svg_data_uri(snapshot.get("qr", "")),
                 "chatUrl": snapshot.get("chat_url", ""),
             }
         )
@@ -912,12 +1176,9 @@ def create_app() -> FastAPI:
             fallback_links=app.state.channel_links,
             bridge_snapshot=monitor.snapshot,
         )
-        if not any(
-            bool(item.get("connected"))
-            for item in payload["channels"].values()
-            if isinstance(item, dict)
-        ):
-            raise HTTPException(status_code=400, detail="Connect Telegram first.")
+        connected_channels = _connected_setup_channels(payload)
+        if not connected_channels:
+            raise HTTPException(status_code=400, detail="Connect Telegram or WhatsApp before continuing.")
         submission = health.load_profile_draft_submission(secret=app.state.health_secret)
         if not submission:
             submission = _default_onboarding_submission(setup_payload=payload)
@@ -927,8 +1188,6 @@ def create_app() -> FastAPI:
             .get("telegram", {})
             .get("bot_token")
         )
-        if not telegram_token:
-            raise HTTPException(status_code=400, detail="Paste your Telegram bot token first.")
 
         if os.environ.get("NANOBOT_HEALTH_ASYNC_SPAWN", "").strip().lower() in {"1", "true", "yes", "on"}:
             try:
@@ -962,6 +1221,7 @@ def create_app() -> FastAPI:
             submission,
             invite=None,
             secret=app.state.health_secret,
+            stable_token_hint=setup_token,
         )
 
         if payload["channels"].get("telegram", {}).get("connected") and telegram_token:
@@ -971,17 +1231,19 @@ def create_app() -> FastAPI:
                 pass
 
         # Spawn the per-user coach container.
-        config_json = _load_health_instance_config_template()
+        config_json = _apply_setup_channel_config(
+            _load_health_instance_config_template(),
+            channels_payload=payload["channels"],
+        )
         try:
             config_json.setdefault("agents", {}).setdefault("defaults", {})["timezone"] = profile.get(
                 "timezone", "UTC"
             )
         except Exception:
             pass
-        minimax_api_key = os.environ.get("MINIMAX_API_KEY", "").strip()
         spawn = None
         warnings: list[str] = []
-        if not minimax_api_key:
+        if not os.environ.get("MINIMAX_API_KEY", "").strip():
             warnings.append("MINIMAX_API_KEY is not set; the coach may not be able to reply.")
         try:
             health_metrics.spawn_attempts.inc()
@@ -992,12 +1254,11 @@ def create_app() -> FastAPI:
                 config_json=config_json,
                 onboarding_submission=submission,
                 tier=tier,
-                extra_env={
-                    "MINIMAX_API_KEY": minimax_api_key,
-                    "TELEGRAM_BOT_TOKEN": telegram_token,
-                    "HEALTH_VAULT_KEY": os.environ.get("HEALTH_VAULT_KEY", "").strip()
-                    or app.state.health_secret,
-                },
+                extra_env=_build_setup_spawn_env(
+                    payload=payload,
+                    health_secret=app.state.health_secret,
+                    telegram_token=telegram_token,
+                ),
             )
             health_metrics.spawn_success.inc()
         except Exception as exc:
@@ -1055,6 +1316,7 @@ def create_app() -> FastAPI:
     async def admin_status() -> JSONResponse:
         users = await app.state.registry.list_users()
         monitor_state = getattr(app.state, "instance_monitor", {}) or {}
+        resources = _host_resource_snapshot(app)
         return JSONResponse(
             {
                 "status": "ok",
@@ -1070,6 +1332,8 @@ def create_app() -> FastAPI:
                     "lastError": monitor_state.get("last_error", ""),
                 },
                 "runtime": app.state.runtime_metrics,
+                "host": resources["host"],
+                "containers": resources["containers"],
             }
         )
 

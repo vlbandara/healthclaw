@@ -323,10 +323,10 @@ async def cmd_onboard(ctx: CommandContext) -> OutboundMessage:
     )
 
 
-def build_help_text() -> str:
+def build_help_text(assistant_name: str = "nanobot") -> str:
     """Build canonical help text shared across channels."""
     lines = [
-        "🐈 nanobot commands:",
+        f"🐈 {assistant_name} commands:",
         "/new — Start a new conversation",
         "/stop — Stop the current task",
         "/restart — Restart the bot",

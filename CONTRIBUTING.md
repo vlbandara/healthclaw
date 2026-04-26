@@ -1,122 +1,54 @@
-# Contributing to nanobot
+# Contributing to Healthclaw
 
-Thank you for being here.
+Healthclaw is a public fork of [nanobot](https://github.com/HKUDS/nanobot), focused on privacy-first wellbeing companions.
 
-nanobot is built with a simple belief: good tools should feel calm, clear, and humane.
-We care deeply about useful features, but we also believe in achieving more with less:
-solutions should be powerful without becoming heavy, and ambitious without becoming
-needlessly complicated.
+The public product name is **Healthclaw**.
+For v0.2 compatibility, the runtime identifiers still use `nanobot` in code, CLI, and environment variables.
 
-This guide is not only about how to open a PR. It is also about how we hope to build
-software together: with care, clarity, and respect for the next person reading the code.
+## Workflow
 
-## Maintainers
+- Branch from `main`
+- Keep changes focused
+- Open pull requests back into `main`
+- Document behavior changes, config changes, and compatibility impact clearly
 
-| Maintainer | Focus |
-|------------|-------|
-| [@re-bin](https://github.com/re-bin) | Project lead, `main` branch |
-| [@chengyongru](https://github.com/chengyongru) | `nightly` branch, experimental features |
-
-## Branching Strategy
-
-We use a two-branch model to balance stability and exploration:
-
-| Branch | Purpose | Stability |
-|--------|---------|-----------|
-| `main` | Stable releases | Production-ready |
-| `nightly` | Experimental features | May have bugs or breaking changes |
-
-### Which Branch Should I Target?
-
-**Target `nightly` if your PR includes:**
-
-- New features or functionality
-- Refactoring that may affect existing behavior
-- Changes to APIs or configuration
-
-**Target `main` if your PR includes:**
-
-- Bug fixes with no behavior changes
-- Documentation improvements
-- Minor tweaks that don't affect functionality
-
-**When in doubt, target `nightly`.** It is easier to move a stable idea from `nightly`
-to `main` than to undo a risky change after it lands in the stable branch.
-
-### How Does Nightly Get Merged to Main?
-
-We don't merge the entire `nightly` branch. Instead, stable features are **cherry-picked** from `nightly` into individual PRs targeting `main`:
-
-```
-nightly  ──┬── feature A (stable) ──► PR ──► main
-           ├── feature B (testing)
-           └── feature C (stable) ──► PR ──► main
-```
-
-This happens approximately **once a week**, but the timing depends on when features become stable enough.
-
-### Quick Summary
-
-| Your Change | Target Branch |
-|-------------|---------------|
-| New feature | `nightly` |
-| Bug fix | `main` |
-| Documentation | `main` |
-| Refactoring | `nightly` |
-| Unsure | `nightly` |
-
-## Development Setup
-
-Keep setup boring and reliable. The goal is to get you into the code quickly:
+## Local Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/HKUDS/nanobot.git
-cd nanobot
-
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Lint code
-ruff check nanobot/
-
-# Format code
-ruff format nanobot/
+git clone https://github.com/vlbandara/healthclaw.git
+cd healthclaw
+uv sync --all-extras
 ```
 
-## Code Style
+Useful commands:
 
-We care about more than passing lint. We want nanobot to stay small, calm, and readable.
+```bash
+uv run ruff check nanobot tests
+uv run pytest -q
+uv build
+docker compose config
+cd bridge && npm ci && npm run build
+```
 
-When contributing, please aim for code that feels:
+## Contribution Standards
 
-- Simple: prefer the smallest change that solves the real problem
-- Clear: optimize for the next reader, not for cleverness
-- Decoupled: keep boundaries clean and avoid unnecessary new abstractions
-- Honest: do not hide complexity, but do not create extra complexity either
-- Durable: choose solutions that are easy to maintain, test, and extend
+- Prefer small, reviewable patches over broad rewrites.
+- Keep public docs aligned with actual runtime behavior.
+- Preserve `nanobot` compatibility unless the change intentionally migrates it.
+- Add or update tests when behavior changes.
+- Avoid committing local state, secrets, screenshots, or generated artifacts unless they are intentionally part of the product.
 
-In practice:
+## Public Surface Rules
 
-- Line length: 100 characters (`ruff`)
-- Target: Python 3.11+
-- Linting: `ruff` with rules E, F, I, N, W (E501 ignored)
-- Async: uses `asyncio` throughout; pytest with `asyncio_mode = "auto"`
-- Prefer readable code over magical code
-- Prefer focused patches over broad rewrites
-- If a new abstraction is introduced, it should clearly reduce complexity rather than move it around
+When editing public-facing materials:
 
-## Questions?
+- refer to the product as **Healthclaw**
+- state clearly when something is inherited from or compatible with `nanobot`
+- use the canonical repository URL: `https://github.com/vlbandara/healthclaw`
 
-If you have questions, ideas, or half-formed insights, you are warmly welcome here.
+## Questions
 
-Please feel free to open an [issue](https://github.com/HKUDS/nanobot/issues), join the community, or simply reach out:
+- [GitHub Discussions](https://github.com/vlbandara/healthclaw/discussions)
+- [GitHub Issues](https://github.com/vlbandara/healthclaw/issues)
 
-- [Discord](https://discord.gg/MnCvHqpUGB)
-- [Feishu/WeChat](./COMMUNICATION.md)
-- Email: Xubin Ren (@Re-bin) — <xubinrencs@gmail.com>
-
-Thank you for spending your time and care on nanobot. We would love for more people to participate in this community, and we genuinely welcome contributions of all sizes.
+Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.

@@ -42,7 +42,7 @@ class GroqTranscriptionProvider:
                 with open(path, "rb") as f:
                     files = {
                         "file": (path.name, f),
-                        "model": (None, "whisper-large-v3"),
+                        "model": (None, "whisper-large-v3-turbo"),
                     }
                     headers = {
                         "Authorization": f"Bearer {self.api_key}",

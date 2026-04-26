@@ -12,9 +12,23 @@ const spawnOverlay = document.getElementById("spawn-overlay");
 const spawnLine = document.getElementById("spawn-line");
 const spawnBar = document.getElementById("spawn-bar");
 const telegramSummary = document.getElementById("telegram-summary");
+const telegramConnectedState = document.getElementById("telegram-connected-state");
+const telegramConnectedCopy = document.getElementById("telegram-connected-copy");
+const telegramBadge = document.getElementById("telegram-badge");
 const finishSummary = document.getElementById("finish-summary");
+const finishTimezone = document.getElementById("finish-timezone");
 const connectTelegramButton = document.getElementById("connect-telegram");
 const openBotFatherButton = document.getElementById("open-botfather");
+const timezoneInput = document.querySelector('[name="timezone"]');
+const setupTimezonePill = document.getElementById("setup-timezone-pill");
+const usernameSuggestions = document.getElementById("username-suggestions");
+const SETUP_TOKEN_KEY = "nanobot-health-setup-token";
+
+// Provider step elements
+const providerOllamaSection = document.getElementById("provider-ollama-section");
+const providerApiSection = document.getElementById("provider-api-section");
+const providerSummary = document.getElementById("provider-summary");
+const providerRadios = form ? [...form.querySelectorAll('[name="provider_type"]')] : [];
 
 const TONE_PREFERENCES = {
   gentle: "Warm, gentle nudges",
@@ -24,6 +38,24 @@ const TONE_PREFERENCES = {
 
 let currentStep = 0;
 let setupState = null;
+const detectedTimezone = detectTimezone();
+
+function detectTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch (e) {
+    return "UTC";
+  }
+}
+
+function detectLanguage() {
+  try {
+    const lang = (navigator.language || "en").trim();
+    return lang || "en";
+  } catch (e) {
+    return "en";
+  }
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -60,11 +92,116 @@ async function runSpawnSequence() {
   spawnOverlay.setAttribute("aria-hidden", "true");
 }
 
-function parseLines(value) {
-  return (value || "")
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean);
+function typedTimezone() {
+  return String(timezoneInput?.value || "").trim() || detectedTimezone;
+}
+
+function seedTimezoneField(value = "") {
+  if (!timezoneInput) {
+    return;
+  }
+  const nextValue = String(value || "").trim() || detectedTimezone;
+  if (!String(timezoneInput.value || "").trim() || value) {
+    timezoneInput.value = nextValue;
+  }
+  if (setupTimezonePill) {
+    setupTimezonePill.textContent = typedTimezone() === detectedTimezone
+      ? `Detected here: ${detectedTimezone}`
+      : `Detected here: ${detectedTimezone}. Using: ${typedTimezone()}`;
+  }
+}
+
+function slugifyBase(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 12);
+}
+
+function randomDigits(length = 4) {
+  let value = "";
+  for (let index = 0; index < length; index += 1) {
+    value += Math.floor(Math.random() * 10);
+  }
+  return value;
+}
+
+function renderUsernameSuggestions() {
+  if (!usernameSuggestions) {
+    return;
+  }
+  const base = slugifyBase(form?.dataset.displayName || "");
+  const stems = [
+    `${base || "my"}health`,
+    `${base || "daily"}check`,
+    `${base || "steady"}care`,
+    "calmcheck",
+    "resetcoach",
+    "dailyanchor",
+  ];
+  const suggestions = [];
+  for (const stem of stems) {
+    const candidate = `${stem}${randomDigits(stem.length > 11 ? 3 : 5)}_bot`;
+    if (!suggestions.includes(candidate)) {
+      suggestions.push(candidate);
+    }
+    if (suggestions.length === 3) {
+      break;
+    }
+  }
+  usernameSuggestions.innerHTML = "";
+  suggestions.forEach((candidate) => {
+    const chip = document.createElement("code");
+    chip.className = "username-suggestion";
+    chip.textContent = candidate;
+    usernameSuggestions.appendChild(chip);
+  });
+}
+
+function selectedPrimaryChannel() {
+  return field("preferred_channel")?.value || "telegram";
+}
+
+function primaryChannelLabel() {
+  return "Telegram";
+}
+
+function setupIsActive() {
+  return setupState?.state === "active";
+}
+
+function setPrimaryChannel() {
+  const hidden = field("preferred_channel");
+  if (hidden) {
+    hidden.value = "telegram";
+  }
+  updateFinishSummary();
+}
+
+if (telegramBadge) {
+  telegramBadge.textContent = "Primary";
+  telegramBadge.classList.remove("channel-badge--secondary");
+}
+
+function updateFinishSummary() {
+  if (!finishSummary) {
+    return;
+  }
+  const tone = form.querySelector('input[name="tone_style"]:checked')?.value || "gentle";
+  const toneLabel = {
+    gentle: "warm and light",
+    direct: "clear and a bit sharper",
+    calm: "steady and grounding",
+  }[tone] || "warm and light";
+  const channelState = (setupState?.channels || {}).telegram || {};
+  finishSummary.textContent = channelState.connected
+    ? setupIsActive()
+      ? `Telegram is live. The starting tone is ${toneLabel}.`
+      : "Telegram is linked. Finish setup and wake your companion before replies start."
+    : "Connect Telegram first, then we can continue.";
+  if (finishTimezone) {
+    finishTimezone.textContent = `Timezone: ${typedTimezone()}. You can change it later in chat if your schedule shifts.`;
+  }
 }
 
 function normalizeTelegramBotToken(value) {
@@ -78,8 +215,6 @@ function validateTelegramBotTokenFormat(value) {
   if (!token) {
     throw new Error("Paste your Telegram bot token first.");
   }
-  // Typical token format: 123456789:AAAbbbCCCdddEEEfffGGGhhhIIIjjj
-  // Keep it permissive enough for Telegram, strict enough to catch copy mistakes.
   const looksRight = /^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(token);
   if (!looksRight) {
     throw new Error(
@@ -98,9 +233,52 @@ function updateStep() {
   activateButton.style.display = currentStep === steps.length - 1 ? "inline-flex" : "none";
 }
 
+function selectedProviderType() {
+  return form ? (form.querySelector('[name="provider_type"]:checked')?.value || "ollama") : "ollama";
+}
+
+function updateProviderSections() {
+  const isOllama = selectedProviderType() === "ollama";
+  if (providerOllamaSection) providerOllamaSection.style.display = isOllama ? "" : "none";
+  if (providerApiSection) providerApiSection.style.display = isOllama ? "none" : "";
+}
+
+async function saveProvider() {
+  const token = form.dataset.setupToken;
+  const providerType = selectedProviderType();
+  if (providerType === "ollama") {
+    if (providerSummary) providerSummary.textContent = "Checking Ollama connection…";
+    await fetchJson(`/api/setup/${token}/provider`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "ollama", api_key: "" }),
+    });
+    if (providerSummary) providerSummary.textContent = "Ollama connected. Running locally.";
+  } else {
+    const providerName = form.querySelector('[name="provider_name"]')?.value || "openrouter";
+    const apiKey = (form.querySelector('[name="provider_api_key"]')?.value || "").trim();
+    if (!apiKey) throw new Error("Paste your API key before continuing.");
+    if (providerSummary) providerSummary.textContent = "Validating API key…";
+    await fetchJson(`/api/setup/${token}/provider`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: providerName, api_key: apiKey }),
+    });
+    if (providerSummary) providerSummary.textContent = "Provider connected.";
+  }
+}
+
 function setStatus(message, isError = false) {
   statusNode.textContent = message;
   statusNode.classList.toggle("status-error", isError);
+}
+
+function setInlineStatus(node, message, isError = false) {
+  if (!node) {
+    return;
+  }
+  node.textContent = message;
+  node.classList.toggle("status-error", isError);
 }
 
 function field(name) {
@@ -124,11 +302,18 @@ function setFieldValue(name, value) {
 }
 
 function fillProfile(profile) {
-  // Minimal onboarding: we only keep a few optional fields in the wizard.
   if (!profile) {
+    seedTimezoneField();
     return;
   }
-  const phase2 = (profile.phase2 || {});
+  const phase1 = profile.phase1 || {};
+  const phase2 = profile.phase2 || {};
+  if (phase1.timezone) {
+    seedTimezoneField(phase1.timezone);
+  } else {
+    seedTimezoneField();
+  }
+  setPrimaryChannel();
   if (typeof phase2.morning_check_in === "boolean") {
     setFieldValue("morning_check_in", phase2.morning_check_in);
   }
@@ -137,18 +322,33 @@ function fillProfile(profile) {
   }
 }
 
-function renderCompletion(links) {
-  completionActions.innerHTML = "";
-  Object.entries(links || {}).forEach(([name, url]) => {
-    if (!url) {
-      return;
+function orderChannelLinks(primaryChannel, links) {
+  const ordered = [];
+  if (primaryChannel && links[primaryChannel]) {
+    ordered.push(primaryChannel);
+  }
+  Object.keys(links || {}).forEach((name) => {
+    if (links[name] && !ordered.includes(name)) {
+      ordered.push(name);
     }
+  });
+  return ordered;
+}
+
+function renderCompletion(preferredChannel, links) {
+  try {
+    window.localStorage.removeItem(SETUP_TOKEN_KEY);
+  } catch (e) {
+    // Ignore storage failures.
+  }
+  completionActions.innerHTML = "";
+  orderChannelLinks("telegram", { telegram: (links || {}).telegram || "" }).forEach((name) => {
     const anchor = document.createElement("a");
-    anchor.href = url;
+    anchor.href = links[name];
     anchor.target = "_blank";
     anchor.rel = "noopener";
-    anchor.className = `channel-link${name === "whatsapp" ? " secondary-link" : ""}`;
-    anchor.textContent = name === "telegram" ? "Open Telegram" : "Open WhatsApp";
+    anchor.className = "channel-link";
+    anchor.textContent = "Open Telegram";
     completionActions.appendChild(anchor);
   });
   const token = form?.dataset.setupToken || "";
@@ -161,7 +361,7 @@ function renderCompletion(links) {
   }[tone] || "warmly";
   if (completionGreeting) {
     const who = displayName || "there";
-    completionGreeting.textContent = `Hey ${who}. I’m awake and I’ll show up ${toneLabel}.`;
+    completionGreeting.textContent = `Hey ${who}. I’m awake and I’ll show up in Telegram ${toneLabel}.`;
   }
   if (webChatLink && token) {
     webChatLink.href = `/chat/${encodeURIComponent(token)}`;
@@ -175,8 +375,14 @@ function profilePayload() {
   const tone = form.querySelector('input[name="tone_style"]:checked')?.value || "gentle";
   return {
     phase1: {
-      // Server will fill sensible defaults if missing.
-      preferred_channel: (field("preferred_channel")?.value || "telegram"),
+      full_name: (form?.dataset.displayName || "").trim(),
+      location: "",
+      timezone: typedTimezone(),
+      language: detectLanguage(),
+      preferred_channel: selectedPrimaryChannel(),
+      wake_time: "",
+      sleep_time: "",
+      consents: ["privacy", "emergency", "coaching"],
     },
     phase2: {
       goals: [],
@@ -210,19 +416,41 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
+function renderTelegramState(telegram) {
+  const connected = Boolean(telegram.connected);
+  telegramConnectedState.hidden = !connected;
+  if (connected) {
+    telegramConnectedCopy.textContent = telegram.bot_username
+      ? setupIsActive()
+        ? `Live as @${telegram.bot_username}.`
+        : `Linked as @${telegram.bot_username}. Finish setup to start replies.`
+      : setupIsActive()
+        ? "Your Telegram bot is live."
+        : "Your Telegram bot is linked. Finish setup to start replies.";
+    setInlineStatus(
+      telegramSummary,
+      telegram.bot_username
+        ? setupIsActive()
+          ? `Live as @${telegram.bot_username}.`
+          : `Linked as @${telegram.bot_username}. Activate the companion to start replies.`
+        : setupIsActive()
+          ? "Telegram is live."
+          : "Telegram is linked. Activate the companion to start replies.",
+    );
+  } else {
+    setInlineStatus(telegramSummary, "Paste a BotFather token to connect Telegram.");
+  }
+}
+
 async function refreshStatus() {
   const token = form.dataset.setupToken;
   setupState = await fetchJson(`/api/setup/${token}/status`);
-
-  const telegram = (setupState.channels || {}).telegram || {};
-  telegramSummary.textContent = telegram.connected
-    ? `Connected as @${telegram.bot_username || "your_bot"}.`
-    : "Telegram is not connected yet.";
-  if (telegram.connected && telegram.bot_username) {
-    setFieldValue("preferred_channel", "telegram");
-  }
+  const channels = setupState.channels || {};
+  const telegram = channels.telegram || {};
 
   fillProfile(setupState.profile);
+  renderTelegramState(telegram);
+
   const reminderPreferences = (setupState.profile?.phase2 || {}).reminder_preferences || [];
   if (Array.isArray(reminderPreferences) && reminderPreferences.length) {
     const reminder = reminderPreferences[0];
@@ -238,12 +466,11 @@ async function refreshStatus() {
       }
     }
   }
-  finishSummary.textContent = setupState.activationReady
-    ? "Everything is lined up. Turn it on when you’re ready."
-    : "Connect Telegram first, then we can continue.";
+  updateFinishSummary();
 
   if (setupState.state === "active") {
-    renderCompletion(setupState.channelLinks || {});
+    const preferred = setupState.profile?.phase1?.preferred_channel || selectedPrimaryChannel();
+    renderCompletion(preferred, setupState.channelLinks || {});
   }
 }
 
@@ -251,14 +478,14 @@ async function saveTelegram() {
   const botToken = validateTelegramBotTokenFormat(field("telegram_bot_token").value);
   setFieldValue("telegram_bot_token", botToken);
   const token = form.dataset.setupToken;
-  setStatus("Checking your Telegram bot token…");
+  setInlineStatus(telegramSummary, "Checking your Telegram bot token…");
   await fetchJson(`/api/setup/${token}/channels/telegram`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ bot_token: botToken }),
   });
   await refreshStatus();
-  setStatus("Telegram is connected.");
+  setInlineStatus(telegramSummary, "Telegram is connected.");
 }
 
 async function saveProfile() {
@@ -280,26 +507,37 @@ async function activateSetup() {
     method: "POST",
   });
   setStatus("Your companion is ready.");
-  renderCompletion(data.channelLinks || {});
+  renderCompletion(
+    data.preferredChannel || selectedPrimaryChannel(),
+    data.channelLinks || setupState?.channelLinks || {},
+  );
 }
 
 async function handleNext() {
   try {
+    // Step 0: Provider selection
     if (currentStep === 0) {
+      await saveProvider();
+      currentStep += 1;
+      updateStep();
+      return;
+    }
+    // Step 1: Telegram
+    if (currentStep === 1) {
       const hasTelegramToken = field("telegram_bot_token").value.trim();
       if (hasTelegramToken && !((setupState?.channels || {}).telegram || {}).connected) {
         await saveTelegram();
       }
-      const channels = setupState?.channels || {};
-      const hasConnectedChannel = Object.values(channels).some((channel) => channel && channel.connected);
-      if (!hasConnectedChannel) {
+      const telegramMeta = ((setupState?.channels || {}).telegram) || {};
+      if (!telegramMeta.connected) {
         throw new Error("Connect Telegram before you continue.");
       }
       currentStep += 1;
       updateStep();
       return;
     }
-    if (currentStep === 1) {
+    // Step 2: Vibe/profile
+    if (currentStep === 2) {
       await saveProfile();
       currentStep += 1;
       updateStep();
@@ -313,7 +551,7 @@ connectTelegramButton.addEventListener("click", async () => {
   try {
     await saveTelegram();
   } catch (error) {
-    setStatus(error.message || "Unable to connect Telegram.", true);
+    setInlineStatus(telegramSummary, error.message || "Unable to connect Telegram.", true);
   }
 });
 
@@ -328,6 +566,18 @@ backButton.addEventListener("click", () => {
   currentStep = Math.max(currentStep - 1, 0);
   updateStep();
 });
+form.addEventListener("change", (e) => {
+  seedTimezoneField();
+  updateFinishSummary();
+  // Update provider section visibility when radio changes
+  if (e.target && e.target.name === "provider_type") {
+    updateProviderSections();
+  }
+});
+form.addEventListener("input", () => {
+  seedTimezoneField();
+  updateFinishSummary();
+});
 activateButton.addEventListener("click", async () => {
   try {
     await activateSetup();
@@ -336,6 +586,10 @@ activateButton.addEventListener("click", async () => {
   }
 });
 
+updateProviderSections();
+renderUsernameSuggestions();
+seedTimezoneField();
+setPrimaryChannel();
 updateStep();
 refreshStatus().catch(() => {});
 runSpawnSequence().catch(() => {

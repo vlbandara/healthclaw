@@ -1,0 +1,82 @@
+name: nanobot-platform
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nanobot
+      POSTGRES_USER: nanobot
+      POSTGRES_PASSWORD: nanobot
+    ports:
+      - "5432:5432"
+    volumes:
+      - platform_pg_data:/var/lib/postgresql/data
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NANOBOT_BUILD_BRIDGE: "0"
+    command: ["serve", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      NANOBOT_STORE__DATABASE_URL: postgresql://nanobot:nanobot@postgres:5432/nanobot
+      NANOBOT_STORE__REDIS_URL: redis://redis:6379/0
+      ARQ_REDIS_URL: redis://redis:6379/0
+      NANOBOT_API_KEY: ${NANOBOT_API_KEY:-}
+      NANOBOT_PROVIDERS__OPENROUTER__API_KEY: ${OPENROUTER_API_KEY:-}
+      NANOBOT_AGENTS__DEFAULTS__MODEL: ${NANOBOT_MODEL:-openai/gpt-4o-mini}
+      NANOBOT_ONBOARDING_TOKEN_SECRET: ${NANOBOT_ONBOARDING_TOKEN_SECRET:-dev-secret-change-me}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+      - postgres
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NANOBOT_BUILD_BRIDGE: "0"
+    command: ["worker"]
+    environment:
+      NANOBOT_STORE__DATABASE_URL: postgresql://nanobot:nanobot@postgres:5432/nanobot
+      NANOBOT_STORE__REDIS_URL: redis://redis:6379/0
+      ARQ_REDIS_URL: redis://redis:6379/0
+      NANOBOT_PROVIDERS__OPENROUTER__API_KEY: ${OPENROUTER_API_KEY:-}
+      NANOBOT_AGENTS__DEFAULTS__MODEL: ${NANOBOT_MODEL:-openai/gpt-4o-mini}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  telegram-ingress:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NANOBOT_BUILD_BRIDGE: "0"
+    entrypoint: ["python"]
+    command: ["-m", "nanobot.gateway.telegram_ingress"]
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      NANOBOT_GATEWAY_URL: http://gateway:8080
+      NANOBOT_API_KEY: ${NANOBOT_API_KEY:-}
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+volumes:
+  platform_pg_data:
+

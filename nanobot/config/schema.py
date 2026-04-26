@@ -219,6 +219,28 @@ class ToolsConfig(Base):
     ssrf_whitelist: list[str] = Field(default_factory=list)  # CIDR ranges to exempt from SSRF blocking (e.g. ["100.64.0.0/10"] for Tailscale)
 
 
+class StoreConfig(Base):
+    """Storage backend configuration (platform mode)."""
+
+    backend: Literal["file", "postgres"] = Field(
+        default="file",
+        validation_alias=AliasChoices("backend", "storeBackend", "store_backend"),
+    )
+    database_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("databaseUrl", "database_url", "db", "dbUrl"),
+    )
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        validation_alias=AliasChoices("redisUrl", "redis_url"),
+    )
+    mem0_config: dict = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("mem0", "mem0Config", "mem0_config"),
+        description="Optional mem0 Memory.from_config(...) dictionary for semantic memory.",
+    )
+
+
 class Config(BaseSettings):
     """Root configuration for nanobot."""
 
@@ -228,6 +250,7 @@ class Config(BaseSettings):
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    store: StoreConfig = Field(default_factory=StoreConfig)
 
     @property
     def workspace_path(self) -> Path:

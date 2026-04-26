@@ -11,7 +11,7 @@ require_bin ssh
 
 HOST="${PROD_HOST:-}"
 USER_NAME="${PROD_USER:-root}"
-APP_DIR="${PROD_APP_DIR:-/opt/biomeclaw}"
+APP_DIR="${PROD_APP_DIR:-/opt/healthclaw}"
 LEGACY_DIR="${PROD_LEGACY_DIR:-/opt/TradingAgents}"
 STATE_DIR="${PROD_STATE_DIR:-/root/.nanobot}"
 BASE_URL="${PROD_BASE_URL:-}"
@@ -60,10 +60,21 @@ done
 
 [[ -n "${HOST}" ]] || prod_die "Missing production host. Set PROD_HOST or pass --host."
 BASE_URL="${BASE_URL:-$(default_base_url "${HOST}")}"
-OUT_DIR="${OUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/biomeclaw-deploy.XXXXXX")}"
+OUT_DIR="${OUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/healthclaw-deploy.XXXXXX")}"
 ensure_dir "${OUT_DIR}"
+expected_branch="${PROD_DEPLOY_BRANCH:-main}"
+current_branch="$(git -C "${PROD_ROOT_DIR}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+if [[ -n "${current_branch}" && "${current_branch}" != "${expected_branch}" && "${ALLOW_NON_MAIN_DEPLOY:-0}" != "1" ]]; then
+  prod_die "Refusing deploy from branch '${current_branch}'. Switch to '${expected_branch}' or set ALLOW_NON_MAIN_DEPLOY=1 to override intentionally."
+fi
 release_sha="${GITHUB_SHA:-$(git -C "${PROD_ROOT_DIR}" rev-parse HEAD)}"
 deployed_at="$(timestamp_utc)"
+
+if [[ -n "${current_branch}" ]]; then
+  prod_log "Deploy source branch: ${current_branch}"
+else
+  prod_log "Deploy source ref: detached HEAD (${release_sha})"
+fi
 
 rsync_flags=(
   -az

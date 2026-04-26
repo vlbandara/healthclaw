@@ -1,6 +1,7 @@
 """CLI commands for nanobot."""
 
 import asyncio
+import json
 import os
 import select
 import signal
@@ -344,6 +345,150 @@ def onboard(
     console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]")
 
 
+# ============================================================================
+# Platform migration
+# ============================================================================
+
+
+@app.command()
+def migrate(
+    config_path: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory to import"),
+    tenant_external_id: str = typer.Option("local", "--tenant", help="Target tenant external id"),
+):
+    """Import an existing file-based workspace into the platform Postgres store."""
+    from nanobot.config.loader import load_config, set_config_path
+    from nanobot.store.postgres import (
+        PostgresMemoryRepository,
+        PostgresPool,
+        PostgresSessionRepository,
+        PostgresStoreConfig,
+        ensure_tenant_id,
+    )
+
+    resolved_config_path = Path(config_path).expanduser().resolve() if config_path else None
+    if resolved_config_path is not None:
+        set_config_path(resolved_config_path)
+    cfg = load_config(resolved_config_path)
+
+    if not cfg.store.database_url:
+        console.print("[red]Missing config.store.database_url[/red]")
+        raise typer.Exit(1)
+
+    ws = Path(workspace).expanduser().resolve() if workspace else cfg.workspace_path
+    if not ws.exists():
+        console.print(f"[red]Workspace not found: {ws}[/red]")
+        raise typer.Exit(1)
+
+    async def _run() -> None:
+        pool_mgr = PostgresPool(PostgresStoreConfig(database_url=cfg.store.database_url))
+        pool = await pool_mgr.init()
+
+        tenant_id = await ensure_tenant_id(pool, tenant_external_id)
+        sess_repo = PostgresSessionRepository(pool)
+        mem_repo = PostgresMemoryRepository(pool)
+
+        # Sessions
+        src_sessions = SessionManager(ws)
+        session_files = list((ws / "sessions").glob("*.jsonl"))
+        imported_sessions = 0
+        for file in session_files:
+            # derive session key from file name: SessionManager uses safe_filename(key.replace(':','_'))
+            # We can't invert safely, so we rely on metadata line inside file.
+            try:
+                raw = file.read_text(encoding="utf-8").splitlines()
+            except Exception:
+                continue
+            key = None
+            for line in raw[:3]:
+                try:
+                    data = json.loads(line)
+                except Exception:
+                    continue
+                if data.get("_type") == "metadata":
+                    key = data.get("key")
+                    break
+            if not key:
+                continue
+            session = src_sessions.get_or_create(key)
+            await sess_repo.save(tenant_id, session)
+            imported_sessions += 1
+
+        # Core docs
+        soul = (ws / "SOUL.md").read_text(encoding="utf-8") if (ws / "SOUL.md").exists() else ""
+        user = (ws / "USER.md").read_text(encoding="utf-8") if (ws / "USER.md").exists() else ""
+        memory = (ws / "memory" / "MEMORY.md").read_text(encoding="utf-8") if (ws / "memory" / "MEMORY.md").exists() else ""
+        interests = (ws / "memory" / "INTERESTS.md").read_text(encoding="utf-8") if (ws / "memory" / "INTERESTS.md").exists() else ""
+
+        if soul:
+            await mem_repo.save_document(tenant_id, "SOUL", soul)
+        if user:
+            await mem_repo.save_document(tenant_id, "USER", user)
+        if memory:
+            await mem_repo.save_document(tenant_id, "MEMORY", memory)
+        if interests:
+            await mem_repo.save_document(tenant_id, "INTERESTS", interests)
+
+        # History JSONL
+        hist_path = ws / "memory" / "history.jsonl"
+        imported_history = 0
+        if hist_path.exists():
+            for line in hist_path.read_text(encoding="utf-8").splitlines():
+                try:
+                    data = json.loads(line)
+                except Exception:
+                    continue
+                content = str(data.get("content") or "")
+                if content.strip():
+                    await mem_repo.add_memory(tenant_id, content)
+                    imported_history += 1
+
+        console.print(
+            f"[green]✓[/green] Imported tenant [cyan]{tenant_external_id}[/cyan] "
+            f"(sessions={imported_sessions}, history={imported_history})"
+        )
+
+    asyncio.run(_run())
+
+
+@app.command("serve")
+def serve(
+    config_path: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    host: str | None = typer.Option(None, "--host", help="Bind host (overrides config.gateway.host)"),
+    port: int | None = typer.Option(None, "--port", help="Bind port (overrides config.gateway.port)"),
+):
+    """Start the stateless FastAPI gateway (platform mode)."""
+    from nanobot.config.loader import load_config, set_config_path
+
+    resolved_config_path = Path(config_path).expanduser().resolve() if config_path else None
+    if resolved_config_path is not None:
+        set_config_path(resolved_config_path)
+    cfg = load_config(resolved_config_path)
+
+    bind_host = host or cfg.gateway.host
+    bind_port = port or cfg.gateway.port
+
+    import uvicorn
+
+    from nanobot.gateway.app import create_app
+
+    uvicorn.run(create_app(cfg), host=bind_host, port=bind_port)
+
+
+@app.command()
+def worker(
+    redis_url: str | None = typer.Option(None, "--redis", help="ARQ Redis URL override"),
+):
+    """Start the platform ARQ worker process."""
+    if redis_url:
+        os.environ["ARQ_REDIS_URL"] = redis_url
+    from arq.worker import run_worker
+
+    from nanobot.worker.worker import WorkerSettings
+
+    run_worker(WorkerSettings)
+
+
 def _merge_missing_defaults(existing: Any, defaults: Any) -> Any:
     """Recursively fill in missing values from defaults without overwriting user config."""
     if not isinstance(existing, dict) or not isinstance(defaults, dict):
@@ -487,8 +632,8 @@ def _migrate_cron_store(config: "Config") -> None:
 # ============================================================================
 
 
-@app.command()
-def serve(
+@app.command("api")
+def api(
     port: int | None = typer.Option(None, "--port", "-p", help="API server port"),
     host: str | None = typer.Option(None, "--host", "-H", help="Bind address"),
     timeout: float | None = typer.Option(None, "--timeout", "-t", help="Per-request timeout (seconds)"),
@@ -541,6 +686,7 @@ def serve(
         mcp_servers=runtime_config.tools.mcp_servers,
         channels_config=runtime_config.channels,
         timezone=runtime_config.agents.defaults.timezone,
+        runtime_config=runtime_config,
     )
 
     model_name = runtime_config.agents.defaults.model
@@ -669,16 +815,13 @@ def gateway(
                             async def _silent(*_a, **_k) -> None:
                                 pass
 
-                            resp = await t.loop.process_direct(
+                            resp = await t.loop.process_internal(
                                 tasks,
-                                session_key="heartbeat",
+                                session_key=f"{ch}:{cid}",
                                 channel=ch,
                                 chat_id=cid,
                                 on_progress=_silent,
                             )
-                            sess = t.loop.sessions.get_or_create("heartbeat")
-                            sess.retain_recent_legal_suffix(hb_cfg.keep_recent_messages)
-                            t.loop.sessions.save(sess)
                             return resp.content if resp else ""
 
                         async def on_no(response: str, t=tenant) -> None:
@@ -778,6 +921,7 @@ def gateway(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         timezone=config.agents.defaults.timezone,
+        runtime_config=config,
     )
 
     # Set cron callback (needs agent)
@@ -852,23 +996,19 @@ def gateway(
     async def on_heartbeat_execute(tasks: str) -> str:
         """Phase 2: execute heartbeat tasks through the full agent loop."""
         channel, chat_id = _pick_heartbeat_target()
+        if channel == "cli":
+            return ""
 
         async def _silent(*_args, **_kwargs):
             pass
 
-        resp = await agent.process_direct(
+        resp = await agent.process_internal(
             tasks,
-            session_key="heartbeat",
+            session_key=f"{channel}:{chat_id}",
             channel=channel,
             chat_id=chat_id,
             on_progress=_silent,
         )
-
-        # Keep a small tail of heartbeat history so the loop stays bounded
-        # without losing all short-term context between runs.
-        session = agent.sessions.get_or_create("heartbeat")
-        session.retain_recent_legal_suffix(hb_cfg.keep_recent_messages)
-        agent.sessions.save(session)
 
         return resp.content if resp else ""
 
@@ -880,7 +1020,7 @@ def gateway(
             return  # No external channel available to deliver to
         await bus.publish_outbound(OutboundMessage(channel=channel, chat_id=chat_id, content=response))
 
-    heartbeat = HeartbeatService(
+    heartbeat: HeartbeatService | None = HeartbeatService(
         workspace=config.workspace_path,
         provider=provider,
         model=agent.model,
@@ -998,6 +1138,7 @@ def agent(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         timezone=config.agents.defaults.timezone,
+        runtime_config=config,
     )
     restart_notice = consume_restart_notice_from_env()
     if restart_notice and should_show_cli_restart_notice(restart_notice, session_id):
@@ -1480,6 +1621,89 @@ def _login_github_copilot() -> None:
     except Exception as e:
         console.print(f"[red]Authentication error: {e}[/red]")
         raise typer.Exit(1)
+
+
+# ============================================================================
+# Database (Platform schema) Commands
+# ============================================================================
+
+db_app = typer.Typer(help="Manage platform database schema (alembic)")
+app.add_typer(db_app, name="db")
+
+
+@db_app.command("upgrade")
+def db_upgrade(
+    config_path: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    revision: str = typer.Option("head", "--revision", help="Alembic revision (default: head)"),
+):
+    """Apply platform DB migrations."""
+    from nanobot.config.loader import load_config, set_config_path
+
+    resolved_config_path = Path(config_path).expanduser().resolve() if config_path else None
+    if resolved_config_path is not None:
+        set_config_path(resolved_config_path)
+
+    cfg = load_config(resolved_config_path)
+    if not cfg.store.database_url:
+        console.print("[red]Missing config.store.database_url (or NANOBOT_DATABASE_URL).[/red]")
+        raise typer.Exit(1)
+
+    os.environ["NANOBOT_DATABASE_URL"] = cfg.store.database_url
+
+    from alembic.config import Config as AlembicConfig
+
+    from alembic import command
+
+    # Prefer a repo/app-root alembic.ini if present (works in Docker images that bundle migrations).
+    candidates = [
+        Path.cwd() / "alembic.ini",
+        Path("/app/alembic.ini"),
+        Path(__file__).resolve().parent.parent.parent / "alembic.ini",
+    ]
+    ini_path = next((p for p in candidates if p.exists()), None)
+    if ini_path is None:
+        console.print("[red]alembic.ini not found in working directory or /app.[/red]")
+        raise typer.Exit(1)
+
+    alembic_cfg = AlembicConfig(str(ini_path))
+    command.upgrade(alembic_cfg, revision)
+    console.print(f"[green]✓[/green] Upgraded database to {revision}")
+
+
+# ============================================================================
+# Evals
+# ============================================================================
+
+eval_app = typer.Typer(help="Run evaluation datasets")
+app.add_typer(eval_app, name="eval")
+
+
+@eval_app.command("run")
+def eval_run(
+    dataset: str = typer.Option("smoke", "--dataset", help="Dataset name (JSONL under nanobot/evals/datasets)"),
+    config_path: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+):
+    """Run an eval dataset locally."""
+    from nanobot.config.loader import load_config, set_config_path
+    from nanobot.evals.runner import run_dataset
+
+    resolved_config_path = Path(config_path).expanduser().resolve() if config_path else None
+    if resolved_config_path is not None:
+        set_config_path(resolved_config_path)
+    cfg = load_config(resolved_config_path)
+
+    async def _run():
+        results = await run_dataset(config=cfg, dataset=dataset)
+        passed = sum(1 for r in results if r.passed)
+        total = len(results)
+        for r in results:
+            mark = "[green]✓[/green]" if r.passed else "[red]✗[/red]"
+            console.print(f"{mark} {r.case_id}  [dim]{r.reason}[/dim]")
+        console.print(f"\nPassed {passed}/{total}")
+        if passed != total:
+            raise typer.Exit(1)
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

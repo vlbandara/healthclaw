@@ -184,6 +184,7 @@ class TenantManager:
             mcp_servers=cfg.tools.mcp_servers,
             channels_config=cfg.channels,
             timezone=cfg.agents.defaults.timezone,
+            runtime_config=cfg,
         )
         dream_cfg = cfg.agents.defaults.dream
         if dream_cfg.model_override:

@@ -6,14 +6,21 @@ import asyncio
 import re
 import time
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from loguru import logger
 from pydantic import Field
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, ReactionTypeEmoji, ReplyParameters, Update
+from telegram import (
+    BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReactionTypeEmoji,
+    ReplyParameters,
+    Update,
+)
 from telegram.error import BadRequest, NetworkError, TimedOut
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
 from nanobot.bus.events import OutboundMessage
@@ -27,6 +34,7 @@ from nanobot.utils.helpers import split_message
 
 TELEGRAM_MAX_MESSAGE_LEN = 4000  # Telegram message character limit
 TELEGRAM_REPLY_CONTEXT_MAX_LEN = TELEGRAM_MAX_MESSAGE_LEN  # Max length for reply context in user message
+_VOICE_TRANSCRIPTION_RETRY = "[voice-transcription-retry]"
 
 
 def _escape_telegram_html(text: str) -> str:
@@ -501,7 +509,7 @@ class TelegramChannel(BaseChannel):
     async def _call_with_retry(self, fn, *args, **kwargs):
         """Call an async Telegram API function with retry on pool/network timeout and RetryAfter."""
         from telegram.error import RetryAfter
-        
+
         for attempt in range(1, _SEND_MAX_RETRIES + 1):
             try:
                 return await fn(*args, **kwargs)
@@ -656,7 +664,11 @@ class TelegramChannel(BaseChannel):
             return
 
         user = update.effective_user
-        from nanobot.health.storage import HealthWorkspace, health_distribution_enabled, is_health_workspace
+        from nanobot.health.storage import (
+            HealthWorkspace,
+            health_distribution_enabled,
+            is_health_workspace,
+        )
 
         if self.workspace and health_distribution_enabled(self.workspace) and not is_health_workspace(self.workspace):
             health = HealthWorkspace(self.workspace)
@@ -684,8 +696,9 @@ class TelegramChannel(BaseChannel):
             )
             return
 
+        assistant_name = "Healthclaw" if self.workspace and is_health_workspace(self.workspace) else "nanobot"
         await update.message.reply_text(
-            f"👋 Hi {user.first_name}! I'm nanobot.\n\n"
+            f"👋 Hi {user.first_name}! I'm {assistant_name}.\n\n"
             "Send me a message and I'll respond!\n"
             "Type /help to see available commands."
         )
@@ -694,7 +707,10 @@ class TelegramChannel(BaseChannel):
         """Handle /help command, bypassing ACL so all users can access it."""
         if not update.message:
             return
-        await update.message.reply_text(build_help_text())
+        from nanobot.health.storage import is_health_workspace
+
+        assistant_name = "Healthclaw" if self.workspace and is_health_workspace(self.workspace) else "nanobot"
+        await update.message.reply_text(build_help_text(assistant_name=assistant_name))
 
     @staticmethod
     def _sender_id(user) -> str:
@@ -733,13 +749,13 @@ class TelegramChannel(BaseChannel):
         text = getattr(reply, "text", None) or getattr(reply, "caption", None) or ""
         if len(text) > TELEGRAM_REPLY_CONTEXT_MAX_LEN:
             text = text[:TELEGRAM_REPLY_CONTEXT_MAX_LEN] + "..."
-            
+
         if not text:
             return None
-            
+
         bot_id, _ = await self._ensure_bot_identity()
         reply_user = getattr(reply, "from_user", None)
-        
+
         if bot_id and reply_user and getattr(reply_user, "id", None) == bot_id:
             return f"[Reply to bot: {text}]"
         elif reply_user and getattr(reply_user, "username", None):
@@ -794,12 +810,14 @@ class TelegramChannel(BaseChannel):
                 transcription = await self.transcribe_audio(file_path)
                 if transcription:
                     logger.info("Transcribed {}: {}...", media_type, transcription[:50])
-                    return [path_str], [f"[transcription: {transcription}]"]
-                return [path_str], [f"[{media_type}: {path_str}]"]
+                    return [path_str], [transcription.strip()]
+                return [path_str], [_VOICE_TRANSCRIPTION_RETRY]
             return [path_str], [f"[{media_type}: {path_str}]"]
         except Exception as e:
             logger.warning("Failed to download message media: {}", e)
             if add_failure_content:
+                if media_type in ("voice", "audio"):
+                    return [], [_VOICE_TRANSCRIPTION_RETRY]
                 return [], [f"[{media_type}: download failed]"]
             return [], []
 
@@ -884,7 +902,7 @@ class TelegramChannel(BaseChannel):
         message = update.message
         user = update.effective_user
         self._remember_thread_context(message)
-        
+
         # Strip @bot_username suffix if present
         content = message.text or ""
         if content.startswith("/") and "@" in content:
@@ -892,7 +910,7 @@ class TelegramChannel(BaseChannel):
             cmd_part = cmd_part.split("@")[0]
             content = f"{cmd_part} {rest[0]}" if rest else cmd_part
         content = self._normalize_telegram_command(content)
-            
+
         await self._handle_message(
             sender_id=self._sender_id(user),
             chat_id=str(message.chat_id),
@@ -932,6 +950,12 @@ class TelegramChannel(BaseChannel):
         current_media_paths, current_media_parts = await self._download_message_media(
             message, add_failure_content=True
         )
+        if current_media_parts == [_VOICE_TRANSCRIPTION_RETRY]:
+            if hasattr(message, "reply_text"):
+                await message.reply_text(
+                    "I couldn't transcribe that voice note. Please try again or send the key point as text."
+                )
+            return
         media_paths.extend(current_media_paths)
         content_parts.extend(current_media_parts)
         if current_media_paths:
@@ -954,6 +978,8 @@ class TelegramChannel(BaseChannel):
 
         str_chat_id = str(chat_id)
         metadata = self._build_message_metadata(message, user)
+        if getattr(message, "voice", None) or getattr(message, "audio", None):
+            metadata["input_mode"] = "voice"
         session_key = self._derive_topic_session_key(message)
 
         # Telegram media groups: buffer briefly, forward as one aggregated turn.

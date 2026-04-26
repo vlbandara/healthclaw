@@ -1,0 +1,7 @@
+# Minimal placeholder for self-hosted Langfuse.
+# Prefer the official Langfuse Helm chart for real deployments.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: langfuse
+

@@ -3,10 +3,91 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Wake your companion — BiomeClaw</title>
+    <title>Wake your companion — Healthclaw</title>
     <link rel="stylesheet" href="/static/tokens.css" />
     <link rel="stylesheet" href="/static/onboard.css" />
     <link rel="stylesheet" href="/static/companion.css" />
+    <style>
+      /* Provider selection cards */
+      .provider-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        margin: 1.25rem 0;
+      }
+      .provider-card {
+        position: relative;
+        cursor: pointer;
+      }
+      .provider-card input[type="radio"] {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .provider-card__inner {
+        border: 2px solid var(--color-border, #e2e8f0);
+        border-radius: 0.75rem;
+        padding: 1rem 1.1rem;
+        transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+        background: var(--color-surface, #fff);
+      }
+      .provider-card input[type="radio"]:checked + .provider-card__inner {
+        border-color: var(--color-primary, #6366f1);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #6366f1) 18%, transparent);
+        background: color-mix(in srgb, var(--color-primary, #6366f1) 5%, var(--color-surface, #fff));
+      }
+      .provider-card__icon {
+        font-size: 1.6rem;
+        margin-bottom: 0.35rem;
+        display: block;
+      }
+      .provider-card__label {
+        font-weight: 600;
+        font-size: 0.95rem;
+        display: block;
+      }
+      .provider-card__sub {
+        font-size: 0.78rem;
+        color: var(--color-muted, #64748b);
+        margin-top: 0.2rem;
+        display: block;
+      }
+      .provider-card--local .provider-card__label::after {
+        content: " ✦ Private";
+        font-size: 0.7rem;
+        font-weight: 500;
+        color: var(--color-primary, #6366f1);
+        margin-left: 0.4rem;
+      }
+      #provider-api-section {
+        margin-top: 0.75rem;
+      }
+      #provider-select {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        border: 1.5px solid var(--color-border, #e2e8f0);
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+        background: var(--color-surface, #fff);
+      }
+      .provider-ollama-info {
+        margin-top: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        background: color-mix(in srgb, var(--color-primary, #6366f1) 7%, transparent);
+        font-size: 0.82rem;
+        color: var(--color-muted, #475569);
+        line-height: 1.55;
+      }
+      .provider-ollama-info code {
+        font-size: 0.8rem;
+        background: color-mix(in srgb, var(--color-primary, #6366f1) 12%, transparent);
+        padding: 0.1rem 0.35rem;
+        border-radius: 0.25rem;
+      }
+    </style>
   </head>
   <body>
     {% from "_companion.html" import companion %}
@@ -28,9 +109,9 @@
           <h1>Give your companion a place to reach you.</h1>
           <p class="lede" id="setup-lede">
             {% if display_name %}
-              {{ display_name }}, this is the last stretch: connect Telegram, pick a starting tone, and you’re in.
+              {{ display_name }}, connect Telegram, choose the vibe, and you're in.
             {% else %}
-              One short flow: connect Telegram, choose the vibe, then turn it on.
+              Connect Telegram, choose the vibe, then turn it on.
             {% endif %}
           </p>
         </header>
@@ -40,50 +121,170 @@
           data-setup-token="{{ setup_token }}"
           data-display-name="{{ display_name|e }}"
           data-telegram-url="{{ channel_links.telegram or '' }}"
-          data-whatsapp-url="{{ channel_links.whatsapp or '' }}"
         >
-          <section class="step active" data-step="1">
-            <h2 class="step-heading">Connect Telegram</h2>
-            <p class="step-copy">Paste your BotFather token and we’ll connect the chat where your companion will show up.</p>
-            <div class="channel-grid">
-              <section class="channel-card">
-                <h3>Telegram bot connection</h3>
-                <p class="helper">This is the chat identity your companion will use.</p>
+          <input type="hidden" name="preferred_channel" value="telegram" />
 
-                <details class="coach-guide" open>
-                  <summary class="coach-guide__summary">BotFather guide (2 minutes)</summary>
-                  <ol class="coach-guide__steps">
-                    <li>
-                      Open Telegram and go to
-                      <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>.
-                      <button type="button" class="coach-guide__button" id="open-botfather">Open BotFather</button>
-                    </li>
-                    <li>Tap <strong>Start</strong>, then send <code>/newbot</code>.</li>
-                    <li>Pick a name for your companion.</li>
-                    <li>Pick a username ending in <code>bot</code>.</li>
-                    <li>Paste the token here so we can wake it up for you.</li>
-                  </ol>
-                  <p class="coach-guide__fineprint helper">
-                    The token is secret. If it ever leaks, regenerate it in BotFather with <code>/token</code>.
-                  </p>
-                </details>
+          <!-- Step 0: AI Provider -->
+          <section class="step active" data-step="0">
+            <h2 class="step-heading">Choose your AI brain</h2>
+            <p class="step-copy">Pick how your companion thinks. Run it entirely on your machine for total privacy, or connect a cloud provider with an API key.</p>
 
-                <label>Bot token <input name="telegram_bot_token" autocomplete="off" /></label>
-                <button type="button" id="connect-telegram">Connect Telegram</button>
-                <p id="telegram-summary" class="helper"></p>
-              </section>
-
-              <section class="setup-promise">
-                <h3>What happens next?</h3>
-                <p>Once Telegram is connected, your companion has somewhere to check in, send reminders, and keep the tone you choose below.</p>
-              </section>
+            <div class="provider-grid">
+              <label class="provider-card provider-card--local" id="provider-card-ollama">
+                <input type="radio" name="provider_type" value="ollama" checked id="provider-radio-ollama" />
+                <div class="provider-card__inner">
+                  <span class="provider-card__icon">&#127968;</span>
+                  <span class="provider-card__label">Local (Ollama)</span>
+                  <span class="provider-card__sub">Runs on your machine. No API key needed.</span>
+                </div>
+              </label>
+              <label class="provider-card" id="provider-card-cloud">
+                <input type="radio" name="provider_type" value="cloud" id="provider-radio-cloud" />
+                <div class="provider-card__inner">
+                  <span class="provider-card__icon">&#9729;&#65039;</span>
+                  <span class="provider-card__label">Cloud Provider</span>
+                  <span class="provider-card__sub">OpenRouter, MiniMax, and more.</span>
+                </div>
+              </label>
             </div>
+
+            <!-- Ollama info -->
+            <div id="provider-ollama-section" class="provider-ollama-info">
+              &#129466; <strong>Ollama must be running locally.</strong> Install from <a href="https://ollama.com" target="_blank" rel="noopener">ollama.com</a>, then run:
+              <br /><br />
+              <code>ollama run gemma:7b</code>
+              <br /><br />
+              Your data stays 100% on your device &mdash; nothing leaves your machine.
+            </div>
+
+            <!-- Cloud provider inputs -->
+            <div id="provider-api-section" style="display:none">
+              <label class="tap-field" style="margin-top:0.5rem">
+                <span>Provider</span>
+                <select id="provider-select" name="provider_name">
+                  {% for key, choice in provider_choices.items() %}
+                    {% if key != 'ollama' %}
+                      <option value="{{ key }}">{{ choice.label }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="tap-field">
+                <span>API Key</span>
+                <input name="provider_api_key" type="password" autocomplete="off" placeholder="Paste your API key…" id="provider-api-key-input" />
+              </label>
+            </div>
+
+            <p id="provider-summary" class="helper channel-inline-status" style="margin-top:0.5rem"></p>
           </section>
 
+          <!-- Step 1: Telegram -->
+          <section class="step" data-step="1">
+            <h2 class="step-heading">Connect Telegram</h2>
+            <p class="step-copy">Set up your Telegram bot once here. You can add other channels later without redoing the rest of setup.</p>
+
+            <section class="channel-card channel-card--setup active">
+              <div class="channel-card__header">
+                <div>
+                  <h3>Telegram</h3>
+                  <p class="helper">Connect a bot once here. Replies start after you finish setup and wake your companion.</p>
+                </div>
+                <span class="channel-badge" id="telegram-badge">Primary</span>
+              </div>
+
+              <div class="channel-compact-status" id="telegram-connected-state" hidden>
+                <strong>Telegram is connected.</strong>
+                <p id="telegram-connected-copy" class="helper">Your bot is ready.</p>
+              </div>
+
+              <div class="channel-checklist">
+                <p class="channel-checklist__title">Quick path</p>
+                <ol class="channel-checklist__items">
+                  <li>Open <strong>BotFather</strong> in Telegram.</li>
+                  <li>Send <code>/newbot</code> and choose any name you want.</li>
+                  <li>Paste the token here and connect it once.</li>
+                </ol>
+              </div>
+
+              <label class="tap-field">
+                <span>Bot token</span>
+                <input name="telegram_bot_token" autocomplete="off" placeholder="123456789:AA..." />
+              </label>
+              <button type="button" id="connect-telegram">Connect Telegram</button>
+              <p id="telegram-summary" class="helper channel-inline-status"></p>
+
+              <details class="support-details">
+                <summary>Need help with BotFather?</summary>
+                <div class="support-details__body">
+                  <div class="support-actions">
+                    <button type="button" class="coach-guide__button" id="open-botfather">Open BotFather</button>
+                  </div>
+
+                  <div class="botfather-panels">
+                    <article class="botfather-panel">
+                      <span class="botfather-panel__step">1</span>
+                      <img src="/static/telegram-botfather-search.png" alt="Telegram search with BotFather selected." loading="lazy" />
+                      <h5>Search for BotFather</h5>
+                      <p>Open Telegram, search for <strong>BotFather</strong>, and enter the verified chat.</p>
+                    </article>
+
+                    <article class="botfather-panel">
+                      <span class="botfather-panel__step">2</span>
+                      <img src="/static/telegram-botfather-newbot.png" alt="BotFather chat showing the /newbot flow and username attempts." loading="lazy" />
+                      <h5>Send <code>/newbot</code></h5>
+                      <p>Pick any display name you like. For the username, use something random that ends in <code>bot</code>.</p>
+                    </article>
+
+                    <article class="botfather-panel">
+                      <span class="botfather-panel__step">3</span>
+                      <img src="/static/telegram-botfather-token.png" alt="BotFather message showing a new Telegram bot token." loading="lazy" />
+                      <h5>Copy the token back here</h5>
+                      <p>Paste it once so we can connect the bot. If it leaks, regenerate it later with <code>/token</code>.</p>
+                    </article>
+                  </div>
+
+                  <div class="support-notes support-notes--soft">
+                    <p class="helper"><strong>Use a random username.</strong> Don't burn time on perfect names. Add 3 to 5 digits and keep the <code>bot</code> ending.</p>
+                    <div id="username-suggestions" class="username-suggestions" aria-live="polite"></div>
+                    <p class="helper"><strong>If the token looks wrong:</strong> it should look like numbers, a colon, then letters and symbols.</p>
+                    <p class="helper"><strong>If you already created the bot:</strong> open it in BotFather and use <code>/token</code>.</p>
+                  </div>
+                </div>
+              </details>
+            </section>
+
+            <section class="setup-promise">
+              <h3>What happens next?</h3>
+              <div class="promise-items">
+                <div class="promise-item">
+                  <span class="promise-icon">&#10024;</span>
+                  <div>
+                    <strong>Companion wakes up</strong>
+                    <p>After activation, your companion will show up in Telegram.</p>
+                  </div>
+                </div>
+                <div class="promise-item">
+                  <span class="promise-icon">&#128197;</span>
+                  <div>
+                    <strong>Daily check-ins</strong>
+                    <p>Depending on your tone, it will proactively reach out.</p>
+                  </div>
+                </div>
+                <div class="promise-item">
+                  <span class="promise-icon">&#128737;&#65039;</span>
+                  <div>
+                    <strong>Private &amp; secure</strong>
+                    <p>All chats are encrypted and stay between you and your bot.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <!-- Step 2: Vibe -->
           <section class="step" data-step="2">
             <h2 class="step-heading">Pick the starting vibe</h2>
-            <p class="step-copy">Just the starting point. It can adapt as it learns what actually helps.</p>
-            <input type="hidden" name="preferred_channel" value="telegram" />
+            <p class="step-copy">Just the starting point. It can adapt as it learns what actually helps. We also detect your timezone here, but you can override it now and change it later in chat.</p>
             <div class="tap-grid tap-grid--vibe">
               <label class="tap-card tap-card--vibe">
                 <input type="radio" name="tone_style" value="gentle" checked />
@@ -114,13 +315,21 @@
                 </span>
               </label>
             </div>
+            <label class="tap-field">
+              <span>Timezone</span>
+              <input name="timezone" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Asia/Colombo" />
+              <small class="field-hint">Detected from this browser first. Edit it if your real schedule should follow another timezone.</small>
+            </label>
+            <div class="time-pill" id="setup-timezone-pill">Detected here: checking your local time…</div>
           </section>
 
+          <!-- Step 3: Activate -->
           <section class="step" data-step="3">
             <h2 class="step-heading">Turn it on</h2>
-            <p class="step-copy">We’ll switch everything on and send you straight into chat.</p>
+            <p class="step-copy">We'll switch everything on and send you straight into Telegram. Your timezone is summarized here so you can catch it before activation.</p>
             <div class="summary-card">
               <p id="finish-summary" class="helper">Connect Telegram first, then continue.</p>
+              <p id="finish-timezone" class="helper">Timezone will follow your local setup.</p>
             </div>
           </section>
 
@@ -135,9 +344,9 @@
 
         <section id="completion" class="completion completion--alive" hidden>
           <div class="completion__companion">{{ companion('happy', 'companion-wrap--sm') }}</div>
-          <h2>I’m here.</h2>
+          <h2>I'm here.</h2>
           <p id="completion-greeting" class="completion__greeting"></p>
-          <p class="completion__hint">Open the chat and say hi. The first version of your companion is already awake.</p>
+          <p class="completion__hint">Open your primary chat and say hi. The first version of your companion is already awake.</p>
           <div id="completion-actions" class="handoff-actions"></div>
           <p class="completion__chat-link-wrap">
             <a id="web-chat-link" class="channel-link secondary-link" href="#" hidden>Chat in the browser</a>

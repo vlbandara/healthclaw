@@ -27,7 +27,7 @@ class ContextBuilder:
 
     def build_system_prompt(self, skill_names: list[str] | None = None) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
-        parts = [self._get_identity()]
+        parts = [self._get_identity(), render_template("agent/voice.md")]
 
         bootstrap = self._load_bootstrap_files()
         if bootstrap:
@@ -36,6 +36,10 @@ class ContextBuilder:
         memory = self.memory.get_memory_context()
         if memory:
             parts.append(f"# Memory\n\n{memory}")
+
+        interests = self.memory.get_interest_context()
+        if interests:
+            parts.append(f"# Hidden Interests\n\n{interests}")
 
         always_skills = self.skills.get_always_skills()
         if always_skills:
@@ -55,9 +59,9 @@ class ContextBuilder:
         system = platform.system()
         runtime = f"{'macOS' if system == 'Darwin' else system} {platform.machine()}, Python {platform.python_version()}"
         assistant_identity = (
-            "BiomeClaw, a sharp health coach with a real personality."
+            "Healthclaw, a calm and grounded health coach with a real personality."
             if is_health_workspace(self.workspace)
-            else "nanobot, a helpful AI assistant."
+            else "nanobot, a calm, grounded, proactive companion with real personality."
         )
 
         return render_template(
@@ -202,3 +206,45 @@ class ContextBuilder:
             thinking_blocks=thinking_blocks,
         ))
         return messages
+
+    # ---------------------------------------------------------------------
+    # Platform-mode helpers (async, repository-backed)
+    # ---------------------------------------------------------------------
+
+    async def build_system_prompt_from_repo(
+        self,
+        *,
+        tenant_id: str,
+        memory_repo: "Any",
+        skill_names: list[str] | None = None,
+    ) -> str:
+        """Build a system prompt using a MemoryRepository instead of workspace files.
+
+        This keeps local/dev behavior unchanged while enabling stateless platform workers.
+        """
+        parts = [self._get_identity(), render_template("agent/voice.md")]
+
+        soul = await memory_repo.get_document(tenant_id, "SOUL")
+        user = await memory_repo.get_document(tenant_id, "USER")
+        memory = await memory_repo.get_document(tenant_id, "MEMORY")
+        interests = await memory_repo.get_document(tenant_id, "INTERESTS")
+
+        if not (soul or "").strip():
+            soul = render_template("agent/soul_global.md")
+
+        bootstrap = []
+        for filename, content in (("SOUL.md", soul), ("USER.md", user)):
+            if (content or "").strip():
+                bootstrap.append(f"## {filename}\n\n{content}")
+        if bootstrap:
+            parts.append("\n\n".join(bootstrap))
+
+        if (memory or "").strip():
+            parts.append(f"# Memory\n\n{memory}")
+        if (interests or "").strip():
+            parts.append(f"# Hidden Interests\n\n{interests}")
+
+        # Skills are still workspace-backed; leave as-is for now.
+        # Platform mode will move skills to a repo backend later.
+        return "\n\n---\n\n".join(parts)
+

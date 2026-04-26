@@ -1,5 +1,3 @@
-import asyncio
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -13,8 +11,12 @@ except ImportError:
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
-from nanobot.channels.telegram import TELEGRAM_REPLY_CONTEXT_MAX_LEN, TelegramChannel, _StreamBuf
-from nanobot.channels.telegram import TelegramConfig
+from nanobot.channels.telegram import (
+    TELEGRAM_REPLY_CONTEXT_MAX_LEN,
+    TelegramChannel,
+    TelegramConfig,
+    _StreamBuf,
+)
 
 
 class _FakeHTTPXRequest:
@@ -271,6 +273,72 @@ async def test_on_start_health_mode_prefers_setup_button(tmp_path, monkeypatch) 
     button = call.kwargs["reply_markup"].inline_keyboard[0][0]
     assert button.text == "Start setup"
     assert button.url.startswith("https://health.example.com/setup/")
+
+
+@pytest.mark.asyncio
+async def test_on_start_health_workspace_uses_healthclaw_branding(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NANOBOT_HEALTH_MODE", raising=False)
+
+    from nanobot.health.bootstrap import write_health_workspace_assets
+    from nanobot.health.storage import HealthWorkspace
+
+    profile = {
+        "mode": "health",
+        "user_token": "setup-demo",
+        "preferred_channel": "telegram",
+        "location": "",
+        "timezone": "Asia/Colombo",
+        "language": "en-US",
+        "demographics": {
+            "age_range": "not set",
+            "sex": "not set",
+            "gender": "not set",
+            "height_cm": None,
+            "weight_kg": None,
+            "known_conditions": [],
+            "medications": [],
+            "allergies": [],
+        },
+        "routines": {"wake_time": "", "sleep_time": ""},
+        "screenings": {"mood_interest": 0, "mood_down": 0},
+        "wellbeing": {
+            "activity_level": "not set",
+            "nutrition_quality": "not set",
+            "sleep_quality": "not set",
+            "stress_level": "not set",
+        },
+        "goals": [],
+        "current_concerns": "",
+        "preferences": {
+            "morning_check_in": True,
+            "reminder_preferences": ["Warm, gentle nudges"],
+            "medication_reminder_windows": [],
+            "weekly_summary": True,
+        },
+        "friction_points": [],
+        "communication_preferences": [],
+        "proactive_enabled": False,
+        "voice_preferred": False,
+        "last_seen_local_date": "",
+        "last_open_loop": "none",
+        "channel_binding": {"preferred_channel": "telegram"},
+    }
+    HealthWorkspace(tmp_path).save_profile(profile)
+    write_health_workspace_assets(tmp_path, profile)
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"]),
+        MessageBus(),
+    )
+    channel.workspace = tmp_path
+
+    update = _make_telegram_update(chat_type="private", text="/start")
+    update.message.reply_text = AsyncMock()
+
+    await channel._on_start(update, None)
+
+    body = update.message.reply_text.await_args.args[0]
+    assert "I'm Healthclaw." in body
+    assert "I'm nanobot." not in body
 
 
 @pytest.mark.asyncio
@@ -924,6 +992,86 @@ async def test_download_message_media_uses_file_unique_id_when_available(
 
 
 @pytest.mark.asyncio
+async def test_download_message_media_returns_plain_transcript_for_voice(
+    monkeypatch, tmp_path
+) -> None:
+    media_dir = tmp_path / "media" / "telegram"
+    media_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "nanobot.channels.telegram.get_media_dir",
+        lambda channel=None: media_dir if channel else tmp_path / "media",
+    )
+
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"]),
+        MessageBus(),
+    )
+    app = _FakeApp(lambda: None)
+    app.bot.get_file = AsyncMock(
+        return_value=SimpleNamespace(download_to_drive=AsyncMock(return_value=None))
+    )
+    channel._app = app
+    channel.transcribe_audio = AsyncMock(return_value="I need a reset today")
+
+    msg = SimpleNamespace(
+        photo=None,
+        voice=SimpleNamespace(file_id="voice-file", file_unique_id="voice-unique", mime_type="audio/ogg"),
+        audio=None,
+        document=None,
+        video=None,
+        video_note=None,
+        animation=None,
+    )
+
+    paths, parts = await channel._download_message_media(msg)
+
+    assert paths == [str(media_dir / "voice-unique.ogg")]
+    assert parts == ["I need a reset today"]
+
+
+@pytest.mark.asyncio
+async def test_on_message_replies_cleanly_when_voice_transcription_fails(monkeypatch, tmp_path) -> None:
+    media_dir = tmp_path / "media" / "telegram"
+    media_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "nanobot.channels.telegram.get_media_dir",
+        lambda channel=None: media_dir if channel else tmp_path / "media",
+    )
+
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"], group_policy="open"),
+        MessageBus(),
+    )
+    app = _FakeApp(lambda: None)
+    app.bot.get_file = AsyncMock(
+        return_value=SimpleNamespace(download_to_drive=AsyncMock(return_value=None))
+    )
+    channel._app = app
+    channel.transcribe_audio = AsyncMock(return_value="")
+    handled = []
+
+    async def capture_handle(**kwargs) -> None:
+        handled.append(kwargs)
+
+    channel._handle_message = capture_handle
+    channel._start_typing = lambda _chat_id: None
+
+    update = _make_telegram_update(text=None)
+    update.message.voice = SimpleNamespace(
+        file_id="voice-file",
+        file_unique_id="voice-unique",
+        mime_type="audio/ogg",
+    )
+    update.message.reply_text = AsyncMock()
+
+    await channel._on_message(update, None)
+
+    update.message.reply_text.assert_awaited_once()
+    assert "couldn't transcribe" in update.message.reply_text.await_args.args[0].lower()
+    assert handled == []
+
+
+@pytest.mark.asyncio
 async def test_on_message_attaches_reply_to_media_when_available(monkeypatch, tmp_path) -> None:
     """When user replies to a message with media, that media is downloaded and attached to the turn."""
     media_dir = tmp_path / "media" / "telegram"
@@ -1136,3 +1284,65 @@ async def test_on_help_includes_restart_command() -> None:
     assert "/dream" in help_text
     assert "/dream-log" in help_text
     assert "/dream-restore" in help_text
+
+
+@pytest.mark.asyncio
+async def test_on_help_health_workspace_uses_healthclaw_branding(tmp_path) -> None:
+    from nanobot.health.bootstrap import write_health_workspace_assets
+    from nanobot.health.storage import HealthWorkspace
+
+    profile = {
+        "mode": "health",
+        "user_token": "setup-demo",
+        "preferred_channel": "telegram",
+        "location": "",
+        "timezone": "Asia/Colombo",
+        "language": "en-US",
+        "demographics": {
+            "age_range": "not set",
+            "sex": "not set",
+            "gender": "not set",
+            "height_cm": None,
+            "weight_kg": None,
+            "known_conditions": [],
+            "medications": [],
+            "allergies": [],
+        },
+        "routines": {"wake_time": "", "sleep_time": ""},
+        "screenings": {"mood_interest": 0, "mood_down": 0},
+        "wellbeing": {
+            "activity_level": "not set",
+            "nutrition_quality": "not set",
+            "sleep_quality": "not set",
+            "stress_level": "not set",
+        },
+        "goals": [],
+        "current_concerns": "",
+        "preferences": {
+            "morning_check_in": True,
+            "reminder_preferences": ["Warm, gentle nudges"],
+            "medication_reminder_windows": [],
+            "weekly_summary": True,
+        },
+        "friction_points": [],
+        "communication_preferences": [],
+        "proactive_enabled": False,
+        "voice_preferred": False,
+        "last_seen_local_date": "",
+        "last_open_loop": "none",
+        "channel_binding": {"preferred_channel": "telegram"},
+    }
+    HealthWorkspace(tmp_path).save_profile(profile)
+    write_health_workspace_assets(tmp_path, profile)
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"], group_policy="open"),
+        MessageBus(),
+    )
+    channel.workspace = tmp_path
+    update = _make_telegram_update(text="/help", chat_type="private")
+    update.message.reply_text = AsyncMock()
+
+    await channel._on_help(update, None)
+
+    help_text = update.message.reply_text.await_args.args[0]
+    assert help_text.startswith("🐈 Healthclaw commands:")

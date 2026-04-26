@@ -76,6 +76,100 @@ def test_save_turn_keeps_tool_results_under_16k() -> None:
     assert session.messages[0]["content"] == content
 
 
+def test_save_turn_drops_reasoning_content_before_persisting() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:assistant-reasoning")
+
+    loop._save_turn(
+        session,
+        [{
+            "role": "assistant",
+            "content": "done",
+            "reasoning_content": "hidden",
+            "thinking_blocks": [{"type": "thinking", "thinking": "secret"}],
+        }],
+        skip=0,
+    )
+
+    assert session.messages == [{"role": "assistant", "content": "done", "timestamp": session.messages[0]["timestamp"]}]
+
+
+def test_save_turn_strips_think_blocks_from_assistant_content() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:assistant-think")
+
+    loop._save_turn(
+        session,
+        [{
+            "role": "assistant",
+            "content": "<think>hidden</think>Visible answer",
+        }],
+        skip=0,
+    )
+
+    assert session.messages[0]["content"] == "Visible answer"
+
+
+def test_save_internal_response_persists_only_final_assistant_message() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:internal-response")
+
+    loop._save_internal_response(
+        session,
+        [
+            {"role": "user", "content": "[Internal Turn] Hidden instruction"},
+            {"role": "assistant", "content": "<think>hidden</think>Visible proactive reply"},
+        ],
+    )
+
+    assert len(session.messages) == 1
+    assert session.messages[0]["role"] == "assistant"
+    assert session.messages[0]["content"] == "Visible proactive reply"
+
+
+def test_set_runtime_checkpoint_drops_reasoning_fields() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:checkpoint-clean")
+
+    loop._set_runtime_checkpoint(
+        session,
+        {
+            "assistant_message": {
+                "role": "assistant",
+                "content": "working",
+                "reasoning_content": "secret",
+                "thinking_blocks": [{"type": "thinking"}],
+            },
+            "completed_tool_results": [],
+            "pending_tool_calls": [],
+        },
+    )
+
+    saved = session.metadata[AgentLoop._RUNTIME_CHECKPOINT_KEY]["assistant_message"]
+    assert "reasoning_content" not in saved
+    assert "thinking_blocks" not in saved
+
+
+def test_set_runtime_checkpoint_strips_think_blocks() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:checkpoint-think")
+
+    loop._set_runtime_checkpoint(
+        session,
+        {
+            "assistant_message": {
+                "role": "assistant",
+                "content": "<think>plan</think>Visible reply",
+            },
+            "completed_tool_results": [],
+            "pending_tool_calls": [],
+        },
+    )
+
+    saved = session.metadata[AgentLoop._RUNTIME_CHECKPOINT_KEY]["assistant_message"]
+    assert saved["content"] == "Visible reply"
+
+
 def test_restore_runtime_checkpoint_rehydrates_completed_and_pending_tools() -> None:
     loop = _mk_loop()
     session = Session(

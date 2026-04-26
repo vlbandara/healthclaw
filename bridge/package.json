@@ -1,7 +1,7 @@
 {
   "name": "nanobot-whatsapp-bridge",
   "version": "0.1.0",
-  "description": "WhatsApp bridge for nanobot using Baileys",
+  "description": "WhatsApp bridge for Healthclaw, a fork of nanobot",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -22,5 +22,10 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "overrides": {
+    "libsignal": {
+      "protobufjs": "^7.5.5"
+    }
   }
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from nanobot.config.schema import Config
@@ -100,7 +101,11 @@ def _build_configured_provider(config: Config, *, workspace: Path) -> LLMProvide
         reasoning_effort=defaults.reasoning_effort,
     )
 
-    if is_health_workspace(workspace):
+    # Only anonymize in hosted/production health mode.
+    # In local/dev (including unit tests), users may have a health workspace on disk
+    # which should not change provider selection behavior.
+    anonymize = os.environ.get("NANOBOT_HEALTH_ANONYMIZE", "").strip().lower() in {"1", "true", "yes"}
+    if anonymize and is_health_workspace(workspace):
         provider = AnonymizingProvider(provider, PIIAnonymizer(workspace))
     return provider
 

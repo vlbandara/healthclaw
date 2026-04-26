@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,11 +18,6 @@ runner = CliRunner()
 
 class _StopGatewayError(RuntimeError):
     pass
-
-
-import shutil
-
-import pytest
 
 
 @pytest.fixture
@@ -1033,7 +1029,7 @@ def test_serve_uses_api_config_defaults_and_workspace_override(
 
     result = runner.invoke(
         app,
-        ["serve", "--config", str(config_file), "--workspace", str(override_workspace)],
+        ["api", "--config", str(config_file), "--workspace", str(override_workspace)],
     )
 
     assert result.exit_code == 0
@@ -1056,7 +1052,7 @@ def test_serve_cli_options_override_api_config(monkeypatch, tmp_path: Path) -> N
     result = runner.invoke(
         app,
         [
-            "serve",
+            "api",
             "--config",
             str(config_file),
             "--host",

@@ -1,0 +1,1 @@
+{"id":"style.no_as_ai","tenant_external_id":"eval","session_key":"api:eval","input":"Say hello and ask one question.","expected_contains":"ok","tags":["style:no_ai_phrase"]}

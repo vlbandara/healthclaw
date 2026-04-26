@@ -19,7 +19,12 @@ const toggleSummary = document.getElementById("toggle-summary");
 const timezonePill = document.getElementById("timezone-pill");
 const finalSummaryName = document.getElementById("final-summary-name");
 const finalSummaryLocation = document.getElementById("final-summary-location");
+const finalSummaryTimezone = document.getElementById("final-summary-timezone");
 const finalSummaryStyle = document.getElementById("final-summary-style");
+const timezoneInput = form?.querySelector('[name="timezone"]');
+const telegramConnectBtn = document.getElementById("telegram-connect-btn");
+const telegramTokenInput = document.getElementById("telegram-bot-token");
+const telegramConnectStatus = document.getElementById("telegram-connect-status");
 
 const SCENES = [
   { label: "Step 1 of 3", hint: "Choose what you want help with.", mood: "happy" },
@@ -85,6 +90,7 @@ const TONE_OPTIONS = {
 
 let currentCard = 0;
 const totalCards = cardSteps.length;
+const detectedTimezone = detectTimezone();
 
 function parseLines(value) {
   return (value || "")
@@ -109,6 +115,10 @@ function typedLocation() {
   return form.querySelector('[name="location"]')?.value.trim() || "";
 }
 
+function typedTimezone() {
+  return timezoneInput?.value.trim() || detectedTimezone;
+}
+
 function detectTimezone() {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -124,6 +134,13 @@ function detectLanguage() {
   } catch (e) {
     return "en";
   }
+}
+
+function seedTimezoneField() {
+  if (!timezoneInput || String(timezoneInput.value || "").trim()) {
+    return;
+  }
+  timezoneInput.value = detectedTimezone;
 }
 
 function updateStepDots() {
@@ -221,14 +238,17 @@ function updateTonePreview() {
 }
 
 function updateLocationPreview() {
-  const timezone = detectTimezone();
+  seedTimezoneField();
+  const timezone = typedTimezone();
   const location = typedLocation();
   const name = typedName();
   const tone = selectedTone();
   const focuses = selectedCareFocuses();
 
   if (timezonePill) {
-    timezonePill.textContent = `Using your local time: ${timezone}`;
+    timezonePill.textContent = timezone === detectedTimezone
+      ? `Detected here: ${detectedTimezone}`
+      : `Detected here: ${detectedTimezone}. Using: ${timezone}`;
   }
   if (finalSummaryName) {
     finalSummaryName.textContent = name
@@ -237,8 +257,11 @@ function updateLocationPreview() {
   }
   if (finalSummaryLocation) {
     finalSummaryLocation.textContent = location
-      ? `${location} is your anchor, and timing will follow your local day.`
-      : `Timing will follow your local day in ${timezone}.`;
+      ? `${location} is your anchor, and reminders will land in the right part of the day.`
+      : "Timing will follow the day you set here.";
+  }
+  if (finalSummaryTimezone) {
+    finalSummaryTimezone.textContent = `Timezone: ${timezone}. You can change it later if your schedule moves.`;
   }
   if (finalSummaryStyle) {
     const focusLabels = focuses.map((key) => formatFocusLabel(key));
@@ -321,7 +344,7 @@ function collectPhase1Payload() {
     location: typedLocation(),
     email: "",
     phone: "",
-    timezone: detectTimezone(),
+    timezone: typedTimezone(),
     language: detectLanguage(),
     preferred_channel: preferredChannel,
     age_range: "not set",
@@ -450,6 +473,56 @@ form.addEventListener("submit", async (event) => {
   renderCompletion(payload.phase1.preferred_channel, links, data.userToken || "");
 });
 
+async function connectTelegram() {
+  if (!telegramConnectBtn || !telegramTokenInput) {
+    return;
+  }
+  const invite = form?.dataset?.invite || "";
+  const botToken = String(telegramTokenInput.value || "").trim();
+  if (!invite) {
+    if (telegramConnectStatus) telegramConnectStatus.textContent = "Missing invite token.";
+    return;
+  }
+  if (!botToken) {
+    if (telegramConnectStatus) telegramConnectStatus.textContent = "Paste your Telegram bot token first.";
+    return;
+  }
+  if (telegramConnectStatus) telegramConnectStatus.textContent = "Validating Telegram token…";
+  telegramConnectBtn.disabled = true;
+  try {
+    const response = await fetch(`/api/onboard/${encodeURIComponent(invite)}/channels/telegram`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botToken }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = data.detail || "Unable to connect Telegram.";
+      if (telegramConnectStatus) telegramConnectStatus.textContent = detail;
+      telegramConnectBtn.disabled = false;
+      return;
+    }
+    const link = (data.channelLinks || {}).telegram || "";
+    if (link) {
+      form.dataset.telegramUrl = link;
+    }
+    if (telegramConnectStatus) {
+      const username = (data.telegram || {}).bot_username || "";
+      telegramConnectStatus.textContent = username
+        ? `Connected @${username}. The Telegram link is ready below.`
+        : "Connected. The Telegram link is ready below.";
+    }
+  } catch (e) {
+    if (telegramConnectStatus) telegramConnectStatus.textContent = e?.message || "Unable to connect Telegram.";
+    telegramConnectBtn.disabled = false;
+  }
+}
+
+if (telegramConnectBtn) {
+  telegramConnectBtn.addEventListener("click", connectTelegram);
+}
+
 syncPreferredChannelWithInvite();
+seedTimezoneField();
 updateStep();
 updatePreviews();

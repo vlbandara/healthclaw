@@ -1,5 +1,28 @@
-We provide QR codes for joining the HKUDS discussion groups on **WeChat** and **Feishu**.
+# Communication
 
-You can join by scanning the QR codes below:
+Healthclaw uses GitHub as its public coordination surface.
 
-<img src="https://github.com/HKUDS/.github/blob/main/profile/QR.png" alt="WeChat QR Code" width="400"/>
+## Use Discussions For
+
+- setup questions
+- contributor coordination
+- design or roadmap proposals
+- usage feedback
+
+Open discussions here:
+
+- [GitHub Discussions](https://github.com/vlbandara/healthclaw/discussions)
+
+## Use Issues For
+
+- reproducible bugs
+- concrete feature requests
+- documentation defects
+
+Open issues here:
+
+- [GitHub Issues](https://github.com/vlbandara/healthclaw/issues)
+
+## Fork Context
+
+Healthclaw is a fork of `nanobot`. When reporting a bug, note whether the issue appears specific to the Healthclaw fork, or whether it may come from inherited upstream behavior.

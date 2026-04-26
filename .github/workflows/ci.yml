@@ -12,11 +12,10 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-validate:
+  quality:
     runs-on: ubuntu-latest
     env:
       DOMAIN: example.com
-      MINIMAX_API_KEY: test-minimax-key
       HEALTH_VAULT_KEY: test-health-vault-key
       POSTGRES_PASSWORD: test-postgres-password
       HEALTH_ONBOARDING_BASE_URL: https://example.com
@@ -30,39 +29,41 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: bridge/package-lock.json
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libolm-dev build-essential
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: uv sync --all-extras
 
       - name: Run Ruff
-        run: uv run ruff check nanobot/health tests/health
+        run: uv run ruff check nanobot tests
 
-      - name: Validate shell scripts
+      - name: Build Python package
+        run: uv build
+
+      - name: Validate docker compose config
+        run: docker compose config
+
+      - name: Build bridge
+        working-directory: bridge
         run: |
-          bash -n deploy/health/hetzner_cutover.sh
-          bash -n scripts/prod/common.sh
-          bash -n scripts/prod/smoke_check.sh
-          bash -n scripts/prod/collect_diagnostics.sh
-          bash -n scripts/prod/deploy.sh
-          bash -n scripts/prod/notify_telegram.sh
-          bash -n scripts/prod/report_incident.sh
+          npm ci
+          npm run build
 
-      - name: Dry-run production deploy script
-        run: bash scripts/prod/deploy.sh --host 127.0.0.1 --base-url http://127.0.0.1 --dry-run --out-dir /tmp/biomeclaw-deploy-dry-run
-
-      - name: Validate docker compose services
-        run: docker compose config --services
-
-      - name: Render docker compose config
-        run: docker compose config >/tmp/docker-compose.rendered.yml
+      - name: Smoke evals
+        run: uv run nanobot eval run --dataset smoke
 
   tests:
-    name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -71,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -86,4 +87,4 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run tests
-        run: uv run pytest tests/
+        run: uv run pytest -q

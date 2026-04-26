@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import mimetypes
 import os
 import re
 import time
 from contextlib import AsyncExitStack, nullcontext
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -22,7 +24,7 @@ from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from nanobot.agent.tools.health_onboarding import CompleteOnboardingTool
-from nanobot.agent.tools.health_profile import SetPreferredNameTool
+from nanobot.agent.tools.health_profile import SetPreferredNameTool, UpdateHealthProfileTool
 from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.search import GlobTool, GrepTool
@@ -34,17 +36,37 @@ from nanobot.bus.queue import MessageBus
 from nanobot.command import CommandContext, CommandRouter, register_builtin_commands
 from nanobot.config.schema import AgentDefaults
 from nanobot.health.bootstrap import read_tenant_user_token
+from nanobot.health.continuity import (
+    apply_health_continuity_updates,
+    build_health_behavior_overlay,
+    build_temporal_context,
+    extract_health_continuity_facts,
+    select_opening_style,
+    select_variation_mode,
+)
 from nanobot.health.safety import emergency_response, is_emergency_language
 from nanobot.health.storage import HealthWorkspace, health_distribution_enabled, is_health_workspace
-from nanobot.providers.base import LLMProvider
+from nanobot.providers.base import GenerationSettings, LLMProvider
+from nanobot.providers.registry import find_by_name
 from nanobot.session.manager import Session, SessionManager
-from nanobot.utils.helpers import image_placeholder_text, truncate_text
+from nanobot.utils.helpers import detect_image_mime, image_placeholder_text, truncate_text
 from nanobot.utils.prompt_templates import render_template
 from nanobot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 
 if TYPE_CHECKING:
-    from nanobot.config.schema import ChannelsConfig, ExecToolConfig, WebToolsConfig
+    from nanobot.config.schema import ChannelsConfig, Config, ExecToolConfig, WebToolsConfig
     from nanobot.cron.service import CronService
+
+
+@dataclass(frozen=True, slots=True)
+class HealthModelRoute:
+    """Internal provider/model choice for a health turn."""
+
+    provider_name: str
+    model: str
+    reason: str
+    fallback_provider_name: str | None = None
+    fallback_model: str | None = None
 
 
 class _LoopHook(AgentHook):
@@ -222,6 +244,7 @@ class AgentLoop:
         channels_config: ChannelsConfig | None = None,
         timezone: str | None = None,
         hooks: list[AgentHook] | None = None,
+        runtime_config: Config | None = None,
     ):
         from nanobot.config.schema import ExecToolConfig, WebToolsConfig
 
@@ -231,6 +254,7 @@ class AgentLoop:
         self.provider = provider
         self.workspace = workspace
         self.model = model or provider.get_default_model()
+        self.runtime_config = runtime_config.model_copy(deep=True) if runtime_config is not None else None
         self.max_iterations = (
             max_iterations if max_iterations is not None else defaults.max_tool_iterations
         )
@@ -277,6 +301,7 @@ class AgentLoop:
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._background_tasks: list[asyncio.Task] = []
         self._session_locks: dict[str, asyncio.Lock] = {}
+        self._provider_cache: dict[tuple[str, str], LLMProvider] = {}
         # NANOBOT_MAX_CONCURRENT_REQUESTS: <=0 means unlimited; default 3.
         _max = int(os.environ.get("NANOBOT_MAX_CONCURRENT_REQUESTS", "3"))
         self._concurrency_gate: asyncio.Semaphore | None = (
@@ -296,6 +321,7 @@ class AgentLoop:
             store=self.context.memory,
             provider=provider,
             model=self.model,
+            timezone=timezone or defaults.timezone,
         )
         self._register_default_tools()
         self.commands = CommandRouter()
@@ -325,6 +351,7 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if is_health_workspace(self.workspace):
             self.tools.register(SetPreferredNameTool(self.workspace))
+            self.tools.register(UpdateHealthProfileTool(self.workspace))
         if self.cron_service:
             self.tools.register(
                 CronTool(self.cron_service, default_timezone=self.context.timezone or "UTC")
@@ -408,16 +435,53 @@ class AgentLoop:
             for text in user_history
         )
 
-    def _health_runtime_context_extra(self) -> dict[str, str] | None:
+    def _health_runtime_context_extra(
+        self,
+        *,
+        temporal=None,
+        variation_mode: str | None = None,
+        opening_style: str | None = None,
+        input_mode: str | None = None,
+    ) -> dict[str, str] | None:
         if not is_health_workspace(self.workspace):
             return None
+        extra: dict[str, str] = {}
         try:
             preferred_name = HealthWorkspace(self.workspace).load_preferred_name()
         except Exception:
             preferred_name = ""
-        if not preferred_name:
-            return None
-        return {"Preferred Name": preferred_name}
+        if preferred_name:
+            extra["Preferred Name"] = preferred_name
+        if temporal is not None:
+            extra["Local Date"] = temporal.local_date
+            extra["Weekday"] = temporal.weekday
+            extra["Part Of Day"] = temporal.part_of_day
+            extra["Quiet Hours"] = "yes" if temporal.quiet_hours else "no"
+            extra["First Touch Today"] = "yes" if temporal.first_touch_today else "no"
+            if temporal.days_since_last_user_message is not None:
+                extra["Days Since Last User Message"] = str(temporal.days_since_last_user_message)
+        if variation_mode:
+            extra["Variation Mode"] = variation_mode
+        if opening_style:
+            extra["Opening Style"] = opening_style
+        if input_mode and input_mode != "text":
+            extra["Input Mode"] = input_mode
+        return extra or None
+
+    def _refresh_health_timezone(self) -> None:
+        if not is_health_workspace(self.workspace):
+            return
+        try:
+            profile = HealthWorkspace(self.workspace).load_profile() or {}
+        except Exception:
+            profile = {}
+        timezone = str(profile.get("timezone") or self.context.timezone or "").strip()
+        if not timezone:
+            return
+        self.context.timezone = timezone
+        cron_tool = self.tools.get("cron")
+        if isinstance(cron_tool, CronTool):
+            cron_tool._default_timezone = timezone
 
     def _health_lifecycle_overlay(self) -> str | None:
         if not is_health_workspace(self.workspace):
@@ -455,6 +519,245 @@ class AgentLoop:
         )
         return base_prompt + "\n\n---\n\n" + cold_start_prompt
 
+    @staticmethod
+    def _health_turn_number(session: Session) -> int:
+        return 1 + sum(1 for message in session.messages if message.get("role") == "user")
+
+    @staticmethod
+    def _health_recent_session_values(session: Session, key: str, *, limit: int = 3) -> list[str]:
+        values = [
+            str(message.get(key) or "").strip()
+            for message in session.messages
+            if message.get("role") == "assistant" and str(message.get(key) or "").strip()
+        ]
+        return values[-limit:]
+
+    def _annotate_health_response(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        variation_mode: str,
+        opening_style: str,
+    ) -> None:
+        for message in reversed(messages):
+            if message.get("role") != "assistant":
+                continue
+            if message.get("tool_calls"):
+                continue
+            message["health_variation_mode"] = variation_mode
+            message["health_opening_style"] = opening_style
+            return
+
+    def _current_provider_name(self) -> str:
+        if self.runtime_config is not None:
+            return self.runtime_config.get_provider_name(self.model) or "custom"
+        return "custom"
+
+    @staticmethod
+    def _media_contains_images(media: list[str] | None) -> bool:
+        for item in media or []:
+            path = Path(item)
+            if path.is_file():
+                try:
+                    mime = detect_image_mime(path.read_bytes()[:64]) or mimetypes.guess_type(path.name)[0]
+                except Exception:
+                    mime = mimetypes.guess_type(path.name)[0]
+            else:
+                mime = mimetypes.guess_type(str(path))[0]
+            if mime and mime.startswith("image/"):
+                return True
+        return False
+
+    def _provider_configured(self, provider_name: str) -> bool:
+        if self.runtime_config is None:
+            return False
+        provider_config = getattr(self.runtime_config.providers, provider_name, None)
+        if provider_config and provider_config.api_key:
+            return True
+        spec = find_by_name(provider_name)
+        env_key = spec.env_key if spec else ""
+        return bool(env_key and os.environ.get(env_key, "").strip())
+
+    def _select_health_model_route(
+        self,
+        *,
+        media: list[str] | None = None,
+        force_fallback: bool = False,
+    ) -> HealthModelRoute:
+        primary_provider = self._current_provider_name()
+        primary = HealthModelRoute(
+            provider_name=primary_provider,
+            model=self.model,
+            reason="primary_text",
+            fallback_provider_name="openrouter",
+            fallback_model="openai/gpt-4o-mini",
+        )
+        if not is_health_workspace(self.workspace):
+            return primary
+        if not self._provider_configured("openrouter"):
+            return primary
+        if force_fallback:
+            return HealthModelRoute(
+                provider_name="openrouter",
+                model="openai/gpt-4o-mini",
+                reason="fallback_text",
+            )
+        if self._media_contains_images(media):
+            return HealthModelRoute(
+                provider_name="openrouter",
+                model="openai/gpt-4o-mini",
+                reason="vision_input",
+            )
+        return primary
+
+    def _provider_for_route(self, route: HealthModelRoute) -> LLMProvider:
+        current_provider_name = self._current_provider_name()
+        if route.provider_name == current_provider_name and route.model == self.model:
+            return self.provider
+
+        cache_key = (route.provider_name, route.model)
+        cached = self._provider_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        if self.runtime_config is None:
+            return self.provider
+
+        from nanobot.providers.factory import _build_configured_provider
+
+        config = self.runtime_config.model_copy(deep=True)
+        config.agents.defaults.provider = route.provider_name
+        config.agents.defaults.model = route.model
+        provider_config = getattr(config.providers, route.provider_name, None)
+        if provider_config is not None and not provider_config.api_key:
+            spec = find_by_name(route.provider_name)
+            env_key = spec.env_key if spec else ""
+            if env_key:
+                provider_config.api_key = os.environ.get(env_key, "").strip()
+        provider = _build_configured_provider(config, workspace=self.workspace)
+        provider.generation = GenerationSettings(
+            temperature=self.provider.generation.temperature,
+            max_tokens=self.provider.generation.max_tokens,
+            reasoning_effort=self.provider.generation.reasoning_effort,
+        )
+        self._provider_cache[cache_key] = provider
+        return provider
+
+    @staticmethod
+    def _should_retry_health_route(
+        *,
+        route: HealthModelRoute | None,
+        stop_reason: str,
+        tools_used: list[str],
+    ) -> bool:
+        if route is None:
+            return False
+        if route.fallback_provider_name is None or route.fallback_model is None:
+            return False
+        if tools_used:
+            return False
+        return stop_reason in {"error", "empty_final_response"}
+
+    def _apply_health_continuity(
+        self,
+        *,
+        session: Session,
+        content: str,
+        metadata: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], Any, str, str]:
+        health = HealthWorkspace(self.workspace)
+        profile = health.load_profile() or {}
+        timezone = str(profile.get("timezone") or self.context.timezone or "UTC").strip() or "UTC"
+        temporal = build_temporal_context(
+            timezone=timezone,
+            last_seen_local_date=str(profile.get("last_seen_local_date") or "").strip() or None,
+        )
+        is_system_session = session.key.startswith(("heartbeat", "autonomy", "cron:"))
+        if is_system_session:
+            variation_mode = select_variation_mode(
+                user_text=content,
+                temporal=temporal,
+                recent_modes=self._health_recent_session_values(session, "health_variation_mode"),
+            )
+            opening_style = select_opening_style(
+                temporal=temporal,
+                recent_openings=self._health_recent_session_values(session, "health_opening_style"),
+                mode=variation_mode,
+            )
+            return profile, temporal, variation_mode, opening_style
+
+        input_mode = str((metadata or {}).get("input_mode") or "text").strip().lower() or "text"
+        facts = extract_health_continuity_facts(content, input_mode=input_mode)
+
+        goals = list(profile.get("goals") or [])
+        for goal in facts.goals:
+            if goal.lower() not in {item.lower() for item in goals}:
+                goals.append(goal)
+        profile["goals"] = goals
+
+        friction_points = list(profile.get("friction_points") or [])
+        for friction in facts.friction_points:
+            if friction.lower() not in {item.lower() for item in friction_points}:
+                friction_points.append(friction)
+        profile["friction_points"] = friction_points
+
+        communication_preferences = list(profile.get("communication_preferences") or [])
+        for pref in facts.communication_preferences:
+            if pref.lower() not in {item.lower() for item in communication_preferences}:
+                communication_preferences.append(pref)
+        profile["communication_preferences"] = communication_preferences
+
+        if facts.open_loop:
+            profile["last_open_loop"] = facts.open_loop
+
+        profile_updates: dict[str, Any] = {"last_seen_local_date": temporal.local_date}
+        if facts.preferred_name:
+            profile_updates["preferred_name"] = facts.preferred_name
+        if facts.location:
+            profile_updates["location"] = facts.location
+        if facts.wake_time:
+            profile_updates["wake_time"] = facts.wake_time
+        if facts.sleep_time:
+            profile_updates["sleep_time"] = facts.sleep_time
+        if facts.proactive_enabled is not None:
+            profile_updates["proactive_enabled"] = facts.proactive_enabled
+        if facts.voice_preferred is not None:
+            profile_updates["voice_preferred"] = facts.voice_preferred
+
+        if profile_updates:
+            try:
+                health.update_profile(**profile_updates)
+            except ValueError:
+                logger.exception("Failed to persist deterministic health profile updates")
+        latest_profile = health.load_profile() or profile
+        latest_profile["goals"] = profile["goals"]
+        latest_profile["friction_points"] = profile["friction_points"]
+        latest_profile["communication_preferences"] = profile["communication_preferences"]
+        latest_profile["last_open_loop"] = profile.get(
+            "last_open_loop",
+            latest_profile.get("last_open_loop", "none"),
+        )
+        health.save_profile(latest_profile)
+        health.refresh_workspace_assets(include_memory=False)
+        apply_health_continuity_updates(
+            user_md=self.workspace / "USER.md",
+            memory_md=self.workspace / "memory" / "MEMORY.md",
+            existing_profile=latest_profile,
+            temporal=temporal,
+            facts=facts,
+        )
+
+        variation_mode = select_variation_mode(
+            user_text=content,
+            temporal=temporal,
+            recent_modes=self._health_recent_session_values(session, "health_variation_mode"),
+        )
+        opening_style = select_opening_style(
+            temporal=temporal,
+            recent_openings=self._health_recent_session_values(session, "health_opening_style"),
+            mode=variation_mode,
+        )
+        return latest_profile, temporal, variation_mode, opening_style
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
@@ -466,6 +769,7 @@ class AgentLoop:
         channel: str = "cli",
         chat_id: str = "direct",
         message_id: str | None = None,
+        route: HealthModelRoute | None = None,
     ) -> tuple[str | None, list[str], list[dict]]:
         """Run the agent iteration loop.
 
@@ -494,10 +798,18 @@ class AgentLoop:
                 return
             self._set_runtime_checkpoint(session, payload)
 
-        result = await self.runner.run(AgentRunSpec(
+        selected_route = route or HealthModelRoute(
+            provider_name=self._current_provider_name(),
+            model=self.model,
+            reason="default",
+        )
+        runner_provider = self._provider_for_route(selected_route)
+        runner = self.runner if runner_provider is self.provider else AgentRunner(runner_provider)
+
+        result = await runner.run(AgentRunSpec(
             initial_messages=initial_messages,
             tools=self.tools,
-            model=self.model,
+            model=selected_route.model,
             max_iterations=self.max_iterations,
             max_tool_result_chars=self.max_tool_result_chars,
             hook=hook,
@@ -511,6 +823,43 @@ class AgentLoop:
             progress_callback=on_progress,
             checkpoint_callback=_checkpoint,
         ))
+        if self._should_retry_health_route(
+            route=selected_route,
+            stop_reason=result.stop_reason,
+            tools_used=result.tools_used,
+        ):
+            fallback_route = HealthModelRoute(
+                provider_name=selected_route.fallback_provider_name or selected_route.provider_name,
+                model=selected_route.fallback_model or selected_route.model,
+                reason="fallback_text",
+            )
+            logger.warning(
+                "Retrying health turn with fallback route {}:{} after {}",
+                fallback_route.provider_name,
+                fallback_route.model,
+                result.stop_reason,
+            )
+            fallback_provider = self._provider_for_route(fallback_route)
+            fallback_runner = (
+                self.runner if fallback_provider is self.provider else AgentRunner(fallback_provider)
+            )
+            result = await fallback_runner.run(AgentRunSpec(
+                initial_messages=initial_messages,
+                tools=self.tools,
+                model=fallback_route.model,
+                max_iterations=self.max_iterations,
+                max_tool_result_chars=self.max_tool_result_chars,
+                hook=hook,
+                error_message="Sorry, I encountered an error calling the AI model.",
+                concurrent_tools=True,
+                workspace=self.workspace,
+                session_key=session.key if session else None,
+                context_window_tokens=self.context_window_tokens,
+                context_block_limit=self.context_block_limit,
+                provider_retry_mode=self.provider_retry_mode,
+                progress_callback=on_progress,
+                checkpoint_callback=_checkpoint,
+            ))
         self._last_usage = result.usage
         if result.stop_reason == "max_iterations":
             logger.warning("Max iterations ({}) reached", self.max_iterations)
@@ -679,6 +1028,7 @@ class AgentLoop:
 
         key = session_key or msg.session_key
         session = self.sessions.get_or_create(key)
+        is_internal_turn = bool((msg.metadata or {}).get("_internal"))
         if self._restore_runtime_checkpoint(session):
             self.sessions.save(session)
 
@@ -715,16 +1065,20 @@ class AgentLoop:
                 metadata={**dict(msg.metadata or {}), "render_as": "text"},
             )
 
-        if is_health_workspace(self.workspace) and msg.channel in {"telegram", "whatsapp"}:
+        if is_health_workspace(self.workspace):
             try:
-                HealthWorkspace(self.workspace).bind_chat_session(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                )
+                health_workspace = HealthWorkspace(self.workspace)
+                if msg.channel in {"telegram", "whatsapp"}:
+                    health_workspace.bind_chat_session(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                    )
+                if not is_internal_turn and not key.startswith(("heartbeat", "autonomy", "cron:")):
+                    health_workspace.record_user_activity()
             except Exception:
                 pass
 
-        if is_health_workspace(self.workspace) and is_emergency_language(msg.content):
+        if not is_internal_turn and is_health_workspace(self.workspace) and is_emergency_language(msg.content):
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
@@ -749,6 +1103,24 @@ class AgentLoop:
             )
         try:
             await self.consolidator.maybe_consolidate_by_tokens(session)
+            self._refresh_health_timezone()
+            health_temporal = None
+            variation_mode = None
+            opening_style = None
+            if is_health_workspace(self.workspace) and not onboarding and not is_internal_turn:
+                _, health_temporal, variation_mode, opening_style = self._apply_health_continuity(
+                    session=session,
+                    content=msg.content,
+                    metadata=msg.metadata,
+                )
+                self._refresh_health_timezone()
+
+            if not onboarding and not is_internal_turn:
+                self.context.memory.record_user_activity(timezone=self.context.timezone)
+                self.context.memory.capture_interest_signals(
+                    msg.content,
+                    timezone=self.context.timezone,
+                )
 
             self._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))
             if message_tool := self.tools.get("message"):
@@ -759,7 +1131,18 @@ class AgentLoop:
             onboarding_prompt = (
                 render_template("health/onboarding_system.md", strip=True) if onboarding else None
             )
-            runtime_context_extra = self._health_runtime_context_extra()
+            input_mode = str(msg.metadata.get("input_mode") or "text").strip().lower() or "text"
+            runtime_context_extra = self._health_runtime_context_extra(
+                temporal=health_temporal,
+                variation_mode=variation_mode,
+                opening_style=opening_style,
+                input_mode=input_mode,
+            )
+            route = (
+                self._select_health_model_route(media=msg.media if msg.media else None)
+                if is_health_workspace(self.workspace) and not onboarding
+                else None
+            )
             system_prompt = onboarding_prompt or self._build_health_system_prompt(session)
             if system_prompt is None:
                 system_prompt = self.context.build_system_prompt()
@@ -767,6 +1150,17 @@ class AgentLoop:
                 life = self._health_lifecycle_overlay()
                 if life:
                     system_prompt = f"{system_prompt}\n\n---\n\n{life}"
+                if health_temporal is not None and variation_mode and opening_style:
+                    system_prompt = (
+                        f"{system_prompt}\n\n---\n\n"
+                        + build_health_behavior_overlay(
+                            temporal=health_temporal,
+                            mode=variation_mode,
+                            opening_style=opening_style,
+                            turn_number=self._health_turn_number(session),
+                            input_mode=input_mode,
+                        )
+                    )
             initial_messages = self.context.build_messages(
                 history=history,
                 current_message=msg.content,
@@ -782,6 +1176,7 @@ class AgentLoop:
                 meta["_tool_hint"] = tool_hint
                 await self.bus.publish_outbound(OutboundMessage(
                     channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=meta,
+                    visibility="internal",
                 ))
 
             final_content, _, all_msgs = await self._run_agent_loop(
@@ -792,12 +1187,23 @@ class AgentLoop:
                 session=session,
                 channel=msg.channel, chat_id=msg.chat_id,
                 message_id=msg.metadata.get("message_id"),
+                route=route,
             )
 
             if final_content is None or not final_content.strip():
                 final_content = EMPTY_FINAL_RESPONSE_MESSAGE
 
-            self._save_turn(session, all_msgs, 1 + len(history))
+            if variation_mode and opening_style:
+                self._annotate_health_response(
+                    all_msgs,
+                    variation_mode=variation_mode,
+                    opening_style=opening_style,
+                )
+            if is_internal_turn:
+                if bool((msg.metadata or {}).get("_persist_internal_response", True)):
+                    self._save_internal_response(session, all_msgs)
+            else:
+                self._save_turn(session, all_msgs, 1 + len(history))
             self._clear_runtime_checkpoint(session)
             self.sessions.save(session)
             self._schedule_background(self._post_turn_maintenance(session))
@@ -865,7 +1271,15 @@ class AgentLoop:
         from datetime import datetime
         for m in messages[skip:]:
             entry = dict(m)
+            entry.pop("reasoning_content", None)
+            entry.pop("thinking_blocks", None)
             role, content = entry.get("role"), entry.get("content")
+            if role == "assistant" and isinstance(content, str):
+                stripped = self._strip_think(content)
+                if not stripped and not entry.get("tool_calls"):
+                    continue
+                entry["content"] = stripped
+                content = entry["content"]
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
             if role == "tool":
@@ -893,10 +1307,45 @@ class AgentLoop:
             session.messages.append(entry)
         session.updated_at = datetime.now()
 
+    def _save_internal_response(self, session: Session, messages: list[dict[str, Any]]) -> None:
+        from datetime import datetime
+
+        for message in reversed(messages):
+            if message.get("role") != "assistant" or message.get("tool_calls"):
+                continue
+            entry = dict(message)
+            entry.pop("reasoning_content", None)
+            entry.pop("thinking_blocks", None)
+            content = self._strip_think(entry.get("content"))
+            if not content:
+                return
+            entry["content"] = content
+            entry.setdefault("timestamp", datetime.now().isoformat())
+            session.messages.append(entry)
+            session.updated_at = datetime.now()
+            return
+
     def _set_runtime_checkpoint(self, session: Session, payload: dict[str, Any]) -> None:
         """Persist the latest in-flight turn state into session metadata."""
-        session.metadata[self._RUNTIME_CHECKPOINT_KEY] = payload
-        self.sessions.save(session)
+        cleaned = dict(payload)
+        if isinstance(cleaned.get("assistant_message"), dict):
+            cleaned["assistant_message"] = dict(cleaned["assistant_message"])
+            cleaned["assistant_message"].pop("reasoning_content", None)
+            cleaned["assistant_message"].pop("thinking_blocks", None)
+            assistant_content = cleaned["assistant_message"].get("content")
+            if isinstance(assistant_content, str):
+                cleaned["assistant_message"]["content"] = self._strip_think(assistant_content)
+        completed_tool_results = []
+        for message in cleaned.get("completed_tool_results") or []:
+            if isinstance(message, dict):
+                stripped = dict(message)
+                stripped.pop("reasoning_content", None)
+                stripped.pop("thinking_blocks", None)
+                completed_tool_results.append(stripped)
+        cleaned["completed_tool_results"] = completed_tool_results
+        session.metadata[self._RUNTIME_CHECKPOINT_KEY] = cleaned
+        if hasattr(self, "sessions"):
+            self.sessions.save(session)
 
     def _clear_runtime_checkpoint(self, session: Session) -> None:
         if self._RUNTIME_CHECKPOINT_KEY in session.metadata:
@@ -910,8 +1359,6 @@ class AgentLoop:
             message.get("tool_call_id"),
             message.get("name"),
             message.get("tool_calls"),
-            message.get("reasoning_content"),
-            message.get("thinking_blocks"),
         )
 
     def _restore_runtime_checkpoint(self, session: Session) -> bool:
@@ -981,4 +1428,36 @@ class AgentLoop:
         return await self._process_message(
             msg, session_key=session_key, on_progress=on_progress,
             on_stream=on_stream, on_stream_end=on_stream_end,
+        )
+
+    async def process_internal(
+        self,
+        content: str,
+        *,
+        session_key: str,
+        channel: str,
+        chat_id: str,
+        on_progress: Callable[[str], Awaitable[None]] | None = None,
+        on_stream: Callable[[str], Awaitable[None]] | None = None,
+        on_stream_end: Callable[..., Awaitable[None]] | None = None,
+        persist_response: bool = True,
+    ) -> OutboundMessage | None:
+        """Process a hidden system-initiated turn against a real user session."""
+        await self._connect_mcp()
+        msg = InboundMessage(
+            channel=channel,
+            sender_id="system",
+            chat_id=chat_id,
+            content="[Internal Turn — system instruction, not user text]\n\n" + content,
+            metadata={
+                "_internal": True,
+                "_persist_internal_response": persist_response,
+            },
+        )
+        return await self._process_message(
+            msg,
+            session_key=session_key,
+            on_progress=on_progress,
+            on_stream=on_stream,
+            on_stream_end=on_stream_end,
         )

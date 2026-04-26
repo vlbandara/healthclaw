@@ -1,6 +1,6 @@
 /**
  * WebSocket server for Python-Node.js bridge communication.
- * Security: binds to 127.0.0.1 only; requires BRIDGE_TOKEN auth; rejects browser Origin headers.
+ * Security: requires BRIDGE_TOKEN auth and rejects browser Origin headers.
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
@@ -32,17 +32,18 @@ export class BridgeServer {
   private wss: WebSocketServer | null = null;
   private wa: WhatsAppClient | null = null;
   private clients: Set<WebSocket> = new Set();
+  private lastQR = '';
+  private lastStatus: unknown = { status: 'waiting' };
 
-  constructor(private port: number, private authDir: string, private token: string) {}
+  constructor(private port: number, private authDir: string, private token: string, private host: string) {}
 
   async start(): Promise<void> {
     if (!this.token.trim()) {
       throw new Error('BRIDGE_TOKEN is required');
     }
 
-    // Bind to localhost only — never expose to external network
     this.wss = new WebSocketServer({
-      host: '127.0.0.1',
+      host: this.host,
       port: this.port,
       verifyClient: (info, done) => {
         const origin = info.origin || info.req.headers.origin;
@@ -54,15 +55,25 @@ export class BridgeServer {
         done(true);
       },
     });
-    console.log(`🌉 Bridge server listening on ws://127.0.0.1:${this.port}`);
+    console.log(`🌉 Bridge server listening on ws://${this.host}:${this.port}`);
     console.log('🔒 Token authentication enabled');
 
     // Initialize WhatsApp client
     this.wa = new WhatsAppClient({
       authDir: this.authDir,
       onMessage: (msg) => this.broadcast({ type: 'message', ...msg }),
-      onQR: (qr) => this.broadcast({ type: 'qr', qr }),
-      onStatus: (status) => this.broadcast({ type: 'status', status }),
+      onQR: (qr) => {
+        this.lastQR = qr;
+        this.broadcast({ type: 'qr', qr });
+      },
+      onStatus: (status) => {
+        this.lastStatus = status;
+        const normalized = typeof status === 'object' && status !== null ? (status as Record<string, unknown>) : {};
+        if (String(normalized.status || '') === 'connected') {
+          this.lastQR = '';
+        }
+        this.broadcast({ type: 'status', status });
+      },
     });
 
     // Handle WebSocket connections
@@ -91,6 +102,10 @@ export class BridgeServer {
 
   private setupClient(ws: WebSocket): void {
     this.clients.add(ws);
+    if (this.lastQR) {
+      ws.send(JSON.stringify({ type: 'qr', qr: this.lastQR }));
+    }
+    ws.send(JSON.stringify({ type: 'status', status: this.lastStatus }));
 
     ws.on('message', async (data) => {
       try {

@@ -10,11 +10,13 @@ require_bin curl
 BASE_URL=""
 HOST="${PROD_HOST:-}"
 USER_NAME="${PROD_USER:-root}"
-APP_DIR="${PROD_APP_DIR:-/opt/biomeclaw}"
+APP_DIR="${PROD_APP_DIR:-/opt/healthclaw}"
 LOG_SINCE="${LOG_SINCE:-15m}"
 OUT_DIR=""
 RETRIES="${SMOKE_RETRIES:-20}"
 SLEEP_SECONDS="${SMOKE_SLEEP_SECONDS:-3}"
+MAX_DISK_USE_PERCENT="${PROD_MAX_DISK_USE_PERCENT:-90}"
+MIN_MEM_AVAILABLE_MB="${PROD_MIN_MEM_AVAILABLE_MB:-256}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,7 +59,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 BASE_URL="${BASE_URL:-$(default_base_url "${HOST}")}"
-OUT_DIR="${OUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/biomeclaw-smoke.XXXXXX")}"
+OUT_DIR="${OUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/healthclaw-smoke.XXXXXX")}"
 ensure_dir "${OUT_DIR}"
 ensure_dir "${OUT_DIR}/endpoints"
 
@@ -92,6 +94,10 @@ if [[ -n "${HOST}" ]]; then
   require_bin ssh
   target="$(ssh_target "${HOST}" "${USER_NAME}")"
   prod_log "Collecting remote compose status from ${target}:${APP_DIR}"
+  ssh "${target}" "uptime" >"${OUT_DIR}/remote-uptime.txt" 2>"${OUT_DIR}/remote-uptime.stderr" || FAILURES+=("host:uptime_failed")
+  ssh "${target}" "free -m" >"${OUT_DIR}/remote-free.txt" 2>"${OUT_DIR}/remote-free.stderr" || FAILURES+=("host:memory_snapshot_failed")
+  ssh "${target}" "df -Pm /" >"${OUT_DIR}/remote-df-root.txt" 2>"${OUT_DIR}/remote-df-root.stderr" || FAILURES+=("host:disk_snapshot_failed")
+  ssh "${target}" "docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}'" >"${OUT_DIR}/docker-stats.txt" 2>"${OUT_DIR}/docker-stats.stderr" || FAILURES+=("host:docker_stats_failed")
   ssh "${target}" "cd '${APP_DIR}' && docker compose ps" >"${OUT_DIR}/docker-compose-ps.txt" 2>"${OUT_DIR}/docker-compose-ps.stderr" || FAILURES+=("remote:docker_compose_ps_failed")
   ssh "${target}" "cd '${APP_DIR}' && docker compose logs --since '${LOG_SINCE}' --timestamps --no-color" >"${OUT_DIR}/docker-compose-logs.txt" 2>"${OUT_DIR}/docker-compose-logs.stderr" || FAILURES+=("remote:docker_compose_logs_failed")
   if [[ -f "${OUT_DIR}/docker-compose-ps.txt" ]]; then
@@ -104,6 +110,18 @@ if [[ -n "${HOST}" ]]; then
       FAILURES+=("remote:log_pattern_match")
     fi
   fi
+  if [[ -f "${OUT_DIR}/remote-free.txt" ]]; then
+    mem_available_mb="$(awk '/^Mem:/ {print $7}' "${OUT_DIR}/remote-free.txt" | tail -n 1)"
+    if [[ "${mem_available_mb}" =~ ^[0-9]+$ ]] && (( mem_available_mb < MIN_MEM_AVAILABLE_MB )); then
+      FAILURES+=("host:memory_available_low")
+    fi
+  fi
+  if [[ -f "${OUT_DIR}/remote-df-root.txt" ]]; then
+    disk_use_percent="$(awk 'NR==2 {gsub(/%/, "", $5); print $5}' "${OUT_DIR}/remote-df-root.txt")"
+    if [[ "${disk_use_percent}" =~ ^[0-9]+$ ]] && (( disk_use_percent >= MAX_DISK_USE_PERCENT )); then
+      FAILURES+=("host:disk_usage_high")
+    fi
+  fi
 fi
 
 STATUS="ok"
@@ -111,12 +129,13 @@ if (( ${#FAILURES[@]} > 0 )); then
   STATUS="failed"
 fi
 
-python3 - "${OUT_DIR}" "${BASE_URL}" "${STATUS}" "${HOST}" "${APP_DIR}" "${LOG_SINCE}" "${FAILURES[@]}" <<'PY'
+python3 - "${OUT_DIR}" "${BASE_URL}" "${STATUS}" "${HOST}" "${APP_DIR}" "${LOG_SINCE}" "${FAILURES[@]-}" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
 
 out_dir, base_url, status, host, app_dir, log_since, *failures = sys.argv[1:]
+failures = [item for item in failures if item]
 payload = {
     "checkedAt": datetime.now(timezone.utc).isoformat(),
     "status": status,
