@@ -11,7 +11,7 @@ body:
 
         Need help with something? We're happy to assist.
 
-        Before posting, check the [FAQ](docs/FAQ.md) and [docs](https://github.com/vlbandara/Healthclaw#documentation) to see if your question is already answered.
+        Before posting, check the [FAQ](docs/FAQ.md) and [docs](https://github.com/vlbandara/healthclaw#documentation) to see if your question is already answered.
 
   - type: textarea
     id: question

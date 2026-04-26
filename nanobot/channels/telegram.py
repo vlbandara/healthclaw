@@ -6,14 +6,21 @@ import asyncio
 import re
 import time
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from loguru import logger
 from pydantic import Field
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, ReactionTypeEmoji, ReplyParameters, Update
+from telegram import (
+    BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReactionTypeEmoji,
+    ReplyParameters,
+    Update,
+)
 from telegram.error import BadRequest, NetworkError, TimedOut
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
 from nanobot.bus.events import OutboundMessage
@@ -502,7 +509,7 @@ class TelegramChannel(BaseChannel):
     async def _call_with_retry(self, fn, *args, **kwargs):
         """Call an async Telegram API function with retry on pool/network timeout and RetryAfter."""
         from telegram.error import RetryAfter
-        
+
         for attempt in range(1, _SEND_MAX_RETRIES + 1):
             try:
                 return await fn(*args, **kwargs)
@@ -657,7 +664,11 @@ class TelegramChannel(BaseChannel):
             return
 
         user = update.effective_user
-        from nanobot.health.storage import HealthWorkspace, health_distribution_enabled, is_health_workspace
+        from nanobot.health.storage import (
+            HealthWorkspace,
+            health_distribution_enabled,
+            is_health_workspace,
+        )
 
         if self.workspace and health_distribution_enabled(self.workspace) and not is_health_workspace(self.workspace):
             health = HealthWorkspace(self.workspace)
@@ -738,13 +749,13 @@ class TelegramChannel(BaseChannel):
         text = getattr(reply, "text", None) or getattr(reply, "caption", None) or ""
         if len(text) > TELEGRAM_REPLY_CONTEXT_MAX_LEN:
             text = text[:TELEGRAM_REPLY_CONTEXT_MAX_LEN] + "..."
-            
+
         if not text:
             return None
-            
+
         bot_id, _ = await self._ensure_bot_identity()
         reply_user = getattr(reply, "from_user", None)
-        
+
         if bot_id and reply_user and getattr(reply_user, "id", None) == bot_id:
             return f"[Reply to bot: {text}]"
         elif reply_user and getattr(reply_user, "username", None):
@@ -891,7 +902,7 @@ class TelegramChannel(BaseChannel):
         message = update.message
         user = update.effective_user
         self._remember_thread_context(message)
-        
+
         # Strip @bot_username suffix if present
         content = message.text or ""
         if content.startswith("/") and "@" in content:
@@ -899,7 +910,7 @@ class TelegramChannel(BaseChannel):
             cmd_part = cmd_part.split("@")[0]
             content = f"{cmd_part} {rest[0]}" if rest else cmd_part
         content = self._normalize_telegram_command(content)
-            
+
         await self._handle_message(
             sender_id=self._sender_id(user),
             chat_id=str(message.chat_id),

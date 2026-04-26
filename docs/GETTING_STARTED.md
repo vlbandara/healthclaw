@@ -42,8 +42,8 @@ ollama pull gemma:7b
 ### Step 2: Clone and Configure
 
 ```bash
-git clone https://github.com/vlbandara/Healthclaw.git
-cd Healthclaw
+git clone https://github.com/vlbandara/healthclaw.git
+cd healthclaw
 
 # Create your config from the template
 cp .env.example .env
@@ -96,8 +96,8 @@ If you prefer not to run locally, you can use a cloud LLM via OpenRouter or othe
 ### Step 1: Clone and Configure
 
 ```bash
-git clone https://github.com/vlbandara/Healthclaw.git
-cd Healthclaw
+git clone https://github.com/vlbandara/healthclaw.git
+cd healthclaw
 
 cp .env.example .env
 ```

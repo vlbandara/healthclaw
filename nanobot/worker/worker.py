@@ -7,16 +7,17 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from croniter import croniter
 from arq import cron
 from arq.connections import RedisSettings
+from croniter import croniter
 from loguru import logger
 
 from nanobot.bus.events import InboundMessage
 from nanobot.config.loader import load_config
 from nanobot.executor.turn import TurnExecutor, TurnExecutorDeps
 from nanobot.nanobot import _make_provider
-from nanobot.providers.base import LLMProvider, LLMResponse
+from nanobot.observability.langfuse import LangfuseTracer, load_langfuse_config
+from nanobot.observability.metrics import agent_turn_duration_seconds, agent_turns_total
 from nanobot.store.locks import RedisDistributedLock, RedisLockConfig, lock
 from nanobot.store.memory_mem0 import Mem0MemoryRepository
 from nanobot.store.onboarding import PostgresOnboardingRepository
@@ -29,8 +30,6 @@ from nanobot.store.postgres import (
     ensure_tenant_id,
 )
 from nanobot.worker.stream import RedisStreamConfig, RedisStreamHook
-from nanobot.observability.langfuse import LangfuseTracer, load_langfuse_config
-from nanobot.observability.metrics import agent_turn_duration_seconds, agent_turns_total
 
 
 def _utcnow() -> datetime:

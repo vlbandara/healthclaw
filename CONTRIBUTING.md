@@ -1,109 +1,54 @@
 # Contributing to Healthclaw
 
-Thank you for being here.
+Healthclaw is a public fork of [nanobot](https://github.com/HKUDS/nanobot), focused on privacy-first wellbeing companions.
 
-Healthclaw is built with a simple belief: wellbeing tools should feel calm, clear, and personal.
-We care deeply about useful features, but we also believe in achieving more with less:
-solutions should be powerful without becoming heavy, and ambitious without becoming
-needlessly complicated.
+The public product name is **Healthclaw**.
+For v0.2 compatibility, the runtime identifiers still use `nanobot` in code, CLI, and environment variables.
 
-This guide is not only about how to open a PR. It is also about how we hope to build
-software together: with care, clarity, and respect for the next person reading the code.
+## Workflow
 
-## Maintainers
+- Branch from `main`
+- Keep changes focused
+- Open pull requests back into `main`
+- Document behavior changes, config changes, and compatibility impact clearly
 
-| Maintainer | Focus |
-|------------|-------|
-| [@vlbandara](https://github.com/vlbandara) | Project lead, wellbeing companion |
-
-## Branching Strategy
-
-We use a simple model:
-
-| Branch | Purpose |
-|--------|---------|
-| `main` | Stable releases |
-| `nightly` | Experimental features |
-
-### Which Branch Should I Target?
-
-**Target `nightly`** if your PR includes:
-- New features or functionality
-- Refactoring that may affect existing behavior
-- Changes to APIs or configuration
-
-**Target `main`** if your PR includes:
-- Bug fixes with no behavior changes
-- Documentation improvements
-- Minor tweaks that don't affect functionality
-
-**When in doubt, target `nightly`.** Stable features are merged to `main` periodically.
-
-## Development Setup
-
-Setup should be boring and reliable:
+## Local Setup
 
 ```bash
-git clone https://github.com/vlbandara/Healthclaw.git
-cd Healthclaw
-
-# Install with dev dependencies (uses uv)
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Lint code
-ruff check nanobot/
-
-# Format code
-ruff format nanobot/
+git clone https://github.com/vlbandara/healthclaw.git
+cd healthclaw
+uv sync --all-extras
 ```
 
-## Good First Issues
+Useful commands:
 
-Looking for a way to contribute? Look for the `good first issue` label on
-[GitHub Issues](https://github.com/vlbandara/Healthclaw/issues?q=label%3A%22good+first+issue%22).
+```bash
+uv run ruff check nanobot tests
+uv run pytest -q
+uv build
+docker compose config
+cd bridge && npm ci && npm run build
+```
 
-We label issues that are:
-- Self-contained and well-scoped
-- Have clear acceptance criteria
-- Don't require deep knowledge of the codebase
+## Contribution Standards
 
-## Code Style
+- Prefer small, reviewable patches over broad rewrites.
+- Keep public docs aligned with actual runtime behavior.
+- Preserve `nanobot` compatibility unless the change intentionally migrates it.
+- Add or update tests when behavior changes.
+- Avoid committing local state, secrets, screenshots, or generated artifacts unless they are intentionally part of the product.
 
-We care about more than passing lint. We want Healthclaw to stay small, calm, and readable.
+## Public Surface Rules
 
-When contributing, please aim for code that feels:
+When editing public-facing materials:
 
-- **Simple** — prefer the smallest change that solves the real problem
-- **Clear** — optimize for the next reader, not for cleverness
-- **Decoupled** — keep boundaries clean and avoid unnecessary new abstractions
-- **Honest** — do not hide complexity, but do not create extra complexity either
-- **Durable** — choose solutions that are easy to maintain, test, and extend
+- refer to the product as **Healthclaw**
+- state clearly when something is inherited from or compatible with `nanobot`
+- use the canonical repository URL: `https://github.com/vlbandara/healthclaw`
 
-In practice:
+## Questions
 
-- Line length: 100 characters (`ruff`)
-- Target: Python 3.11+
-- Linting: `ruff` with rules E, F, I, N, W (E501 ignored)
-- Async: uses `asyncio` throughout; pytest with `asyncio_mode = "auto"`
-- Prefer readable code over magical code
-- Prefer focused patches over broad rewrites
-- If a new abstraction is introduced, it should clearly reduce complexity rather than move it around
+- [GitHub Discussions](https://github.com/vlbandara/healthclaw/discussions)
+- [GitHub Issues](https://github.com/vlbandara/healthclaw/issues)
 
-## Questions?
-
-If you have questions, ideas, or half-formed insights, you are warmly welcome here.
-
-- [GitHub Discussions](https://github.com/vlbandara/Healthclaw/discussions) — Ask questions, share ideas
-- [GitHub Issues](https://github.com/vlbandara/Healthclaw/issues) — Report bugs, request features
-
-Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
-
-## Acknowledgements
-
-Healthclaw is a wellbeing-focused fork of [nanobot](https://github.com/HKUDS/nanobot) by the HKUDS team.
-We're grateful for their excellent foundation.
-
-Thank you for spending your time and care on Healthclaw. We would love for more people to participate in this community, and we genuinely welcome contributions of all sizes.
+Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.

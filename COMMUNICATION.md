@@ -1,22 +1,28 @@
 # Communication
 
-## Community
+Healthclaw uses GitHub as its public coordination surface.
 
-Healthclaw uses GitHub as its primary communication platform:
+## Use Discussions For
 
-- **GitHub Discussions** — Ask questions, share ideas, and connect with the community
-- **GitHub Issues** — Report bugs and request features
-- **GitHub PRs** — Contribute code and documentation
+- setup questions
+- contributor coordination
+- design or roadmap proposals
+- usage feedback
 
-## Getting Help
+Open discussions here:
 
-1. Check the [FAQ](docs/FAQ.md) — your question may already be answered
-2. Search [GitHub Discussions](https://github.com/vlbandara/Healthclaw/discussions) for similar topics
-3. Open a new [Discussion](https://github.com/vlbandara/Healthclaw/discussions/new) if you can't find what you need
-4. For bugs, use the [Bug Report template](https://github.com/vlbandara/Healthclaw/issues/new?template=bug_report.md)
+- [GitHub Discussions](https://github.com/vlbandara/healthclaw/discussions)
 
-## Contributing
+## Use Issues For
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute.
+- reproducible bugs
+- concrete feature requests
+- documentation defects
 
-Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating in the community.
+Open issues here:
+
+- [GitHub Issues](https://github.com/vlbandara/healthclaw/issues)
+
+## Fork Context
+
+Healthclaw is a fork of `nanobot`. When reporting a bug, note whether the issue appears specific to the Healthclaw fork, or whether it may come from inherited upstream behavior.

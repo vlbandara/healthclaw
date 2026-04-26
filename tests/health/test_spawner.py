@@ -3,7 +3,7 @@ from __future__ import annotations
 from nanobot.health.spawner import HealthInstanceSpawner
 
 
-def test_spawner_defaults_to_Healthclaw_orchestrator_image(monkeypatch) -> None:
+def test_spawner_defaults_to_healthclaw_orchestrator_image(monkeypatch) -> None:
     monkeypatch.delenv("NANOBOT_HEALTH_INSTANCE_IMAGE", raising=False)
 
     spawner = HealthInstanceSpawner()

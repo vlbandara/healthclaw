@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
-
 from nanobot.bus.events import InboundMessage
 from nanobot.config.schema import Config
 from nanobot.evals.judge import Verdict, contains_judge, not_contains_judge

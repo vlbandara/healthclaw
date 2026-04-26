@@ -1,6 +1,7 @@
 """CLI commands for nanobot."""
 
 import asyncio
+import json
 import os
 import select
 import signal
@@ -468,6 +469,7 @@ def serve(
     bind_port = port or cfg.gateway.port
 
     import uvicorn
+
     from nanobot.gateway.app import create_app
 
     uvicorn.run(create_app(cfg), host=bind_host, port=bind_port)
@@ -481,6 +483,7 @@ def worker(
     if redis_url:
         os.environ["ARQ_REDIS_URL"] = redis_url
     from arq.worker import run_worker
+
     from nanobot.worker.worker import WorkerSettings
 
     run_worker(WorkerSettings)
@@ -1647,8 +1650,9 @@ def db_upgrade(
 
     os.environ["NANOBOT_DATABASE_URL"] = cfg.store.database_url
 
-    from alembic import command
     from alembic.config import Config as AlembicConfig
+
+    from alembic import command
 
     # Prefer a repo/app-root alembic.ini if present (works in Docker images that bundle migrations).
     candidates = [

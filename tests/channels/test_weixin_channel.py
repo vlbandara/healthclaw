@@ -5,8 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-import pytest
 import httpx
+import pytest
 
 import nanobot.channels.weixin as weixin_mod
 from nanobot.bus.queue import MessageBus
@@ -15,10 +15,10 @@ from nanobot.channels.weixin import (
     ITEM_TEXT,
     MESSAGE_TYPE_BOT,
     WEIXIN_CHANNEL_VERSION,
-    _decrypt_aes_ecb,
-    _encrypt_aes_ecb,
     WeixinChannel,
     WeixinConfig,
+    _decrypt_aes_ecb,
+    _encrypt_aes_ecb,
 )
 
 

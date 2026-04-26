@@ -17,7 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
-urls = { Homepage = "https://github.com/vlbandara/Healthclaw", Repository = "https://github.com/vlbandara/Healthclaw", Issues = "https://github.com/vlbandara/Healthclaw/issues" }
+urls = { Homepage = "https://github.com/vlbandara/healthclaw", Repository = "https://github.com/vlbandara/healthclaw", Issues = "https://github.com/vlbandara/healthclaw/issues" }
 
 dependencies = [
     "typer>=0.20.0,<1.0.0",

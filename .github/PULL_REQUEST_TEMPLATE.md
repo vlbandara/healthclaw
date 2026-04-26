@@ -1,77 +1,24 @@
-name: Pull Request
-description: Submit changes to Healthclaw
-title: "[PR] "
-labels: []
-assignees: []
-body:
-  - type: markdown
-    attributes:
-      value: |
-        ## Pull Request
+## Summary
 
-        Thank you for contributing to Healthclaw! Please fill out this checklist.
+Describe what changed and why.
 
-  - type: textarea
-    id: description
-    attributes:
-      label: Description
-      description: Summary of changes (what and why)
-    validations:
-      required: true
+## Testing
 
-  - type: textarea
-    id: testing
-    attributes:
-      label: Testing
-      description: |
-        How did you test your changes?
-        - [ ] Tested locally with Ollama
-        - [ ] Tested with cloud API
-        - [ ] Ran `pytest tests/`
-        - [ ] Tested in Docker Compose
-    validations:
-      required: true
+- [ ] `uv run ruff check nanobot tests`
+- [ ] `uv run pytest -q`
+- [ ] `uv build`
+- [ ] `docker compose config`
+- [ ] `cd bridge && npm ci && npm run build`
 
-  - type: textarea
-    id: screenshots
-    attributes:
-      label: Screenshots (for UI changes)
-      description: |
-        If your change affects the UI, include before/after screenshots
-        or screen recordings.
-    validations:
-      required: false
+## Compatibility
 
-  - type: checkbox
-    id: docs
-    attributes:
-      label: Documentation
-      options:
-        - label: Updated relevant docs in `/docs/`
-        required: false
+- [ ] Public branding remains correct as **Healthclaw**
+- [ ] Any retained `nanobot` runtime identifiers are intentional and documented
 
-  - type: checkbox
-    id: lint
-    attributes:
-      label: Lint Check
-      options:
-        - label: Ran `ruff check nanobot/` with no errors
-        required: false
+## Docs
 
-  - type: textarea
-    id: breaking
-    attributes:
-      label: Breaking Changes
-      description: |
-        Does this PR introduce any breaking changes?
-        If yes, describe what and how to migrate.
-    validations:
-      required: false
+- [ ] Relevant docs were updated
 
-  - type: textarea
-    id: additional
-    attributes:
-      label: Additional Notes
-      description: Anything else reviewers should know
-    validations:
-      required: false
+## Notes
+
+List migrations, breaking changes, or reviewer context if needed.

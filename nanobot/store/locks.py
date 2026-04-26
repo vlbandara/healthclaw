@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import secrets
 import time
 from dataclasses import dataclass
 
 from loguru import logger
-import asyncio
 
 
 @dataclass(slots=True)
@@ -71,7 +71,7 @@ class RedisDistributedLock:
             return False
 
 
-class lock:
+class Lock:
     """Async context manager around RedisDistributedLock.acquire/release."""
 
     def __init__(
@@ -101,3 +101,5 @@ class lock:
         self._token = None
         return False
 
+
+lock = Lock

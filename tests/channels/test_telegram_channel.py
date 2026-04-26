@@ -1,5 +1,3 @@
-import asyncio
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -13,8 +11,12 @@ except ImportError:
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
-from nanobot.channels.telegram import TELEGRAM_REPLY_CONTEXT_MAX_LEN, TelegramChannel, _StreamBuf
-from nanobot.channels.telegram import TelegramConfig
+from nanobot.channels.telegram import (
+    TELEGRAM_REPLY_CONTEXT_MAX_LEN,
+    TelegramChannel,
+    TelegramConfig,
+    _StreamBuf,
+)
 
 
 class _FakeHTTPXRequest:
@@ -274,7 +276,7 @@ async def test_on_start_health_mode_prefers_setup_button(tmp_path, monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_on_start_health_workspace_uses_Healthclaw_branding(tmp_path, monkeypatch) -> None:
+async def test_on_start_health_workspace_uses_healthclaw_branding(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("NANOBOT_HEALTH_MODE", raising=False)
 
     from nanobot.health.bootstrap import write_health_workspace_assets
@@ -1285,7 +1287,7 @@ async def test_on_help_includes_restart_command() -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_help_health_workspace_uses_Healthclaw_branding(tmp_path) -> None:
+async def test_on_help_health_workspace_uses_healthclaw_branding(tmp_path) -> None:
     from nanobot.health.bootstrap import write_health_workspace_assets
     from nanobot.health.storage import HealthWorkspace
 

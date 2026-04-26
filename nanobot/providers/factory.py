@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import os
+from pathlib import Path
 
 from nanobot.config.schema import Config
 from nanobot.health.storage import HealthWorkspace, health_distribution_enabled, is_health_workspace

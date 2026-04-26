@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import asyncio
@@ -5,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 discord = pytest.importorskip("discord")
 
 from nanobot.bus.events import OutboundMessage

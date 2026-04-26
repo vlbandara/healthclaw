@@ -1,9 +1,9 @@
 """Tests for the Dream class — two-phase memory consolidation via AgentRunner."""
 
 from datetime import datetime
-import pytest
-
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from nanobot.agent.memory import Dream, MemoryStore
 from nanobot.agent.runner import AgentRunResult

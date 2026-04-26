@@ -19,7 +19,7 @@ body:
       label: Environment
       description: |
         Describe your setup (OS, Python version, Docker version, deployment method)
-        Examples: Ubuntu 22.04, Python 3.12, Docker Compose on Hetzner VPS
+        Examples: Ubuntu 22.04, Python 3.12, Docker Compose, local Ollama, self-hosted VPS
     validations:
       required: true
 

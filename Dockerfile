@@ -41,7 +41,7 @@ WORKDIR /app/bridge
 RUN if [ "$NANOBOT_BUILD_BRIDGE" = "1" ]; then \
       git config --global --add url."https://github.com/".insteadOf ssh://git@github.com/ && \
       git config --global --add url."https://github.com/".insteadOf git@github.com: && \
-      npm install && npm run build; \
+      npm ci && npm run build; \
     else \
       echo "Skipping WhatsApp bridge build"; \
     fi

@@ -12,6 +12,7 @@ import os
 import shutil
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -42,8 +43,12 @@ from nanobot.health.hosted import (
 )
 from nanobot.health.registry import HealthRegistry
 from nanobot.health.spawner import HealthInstanceSpawner
-from nanobot.health.storage import HealthWorkspace, get_health_vault_secret
-from nanobot.health.storage import normalize_clock_time, validate_health_timezone
+from nanobot.health.storage import (
+    HealthWorkspace,
+    get_health_vault_secret,
+    normalize_clock_time,
+    validate_health_timezone,
+)
 
 logger = logging.getLogger("nanobot.health.api")
 _request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("nanobot_health_request_id", default="")
@@ -806,20 +811,38 @@ async def _cleanup_stale_setup_sessions(app: FastAPI) -> None:
 def create_app() -> FastAPI:
     _configure_logging()
     workspace_root = _resolve_workspace()
-    app = FastAPI(title="nanobot health onboarding")
-    app.state.workspace_root = workspace_root
-    app.state.health_secret = get_health_vault_secret()
-    app.state.channel_links = _channel_links()
-    app.state.registry = HealthRegistry()
-    app.state.spawner = HealthInstanceSpawner()
-    app.state.runtime_metrics = _runtime_metrics_state()
-
+    channel_links = _channel_links()
     monitor = WhatsAppBridgeMonitor(
         bridge_url=get_whatsapp_bridge_url(),
         bridge_token=get_whatsapp_bridge_token(),
-        fallback_chat_url=app.state.channel_links.get("whatsapp", ""),
+        fallback_chat_url=channel_links.get("whatsapp", ""),
         on_status=lambda _payload: None,
     )
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        await _cleanup_stale_setup_sessions(app)
+        await monitor.start()
+        app.state.instance_monitor_task = asyncio.create_task(_container_health_monitor(app))
+        try:
+            yield
+        finally:
+            await monitor.stop()
+            task = getattr(app.state, "instance_monitor_task", None)
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except Exception:
+                    pass
+
+    app = FastAPI(title="nanobot health onboarding", lifespan=lifespan)
+    app.state.workspace_root = workspace_root
+    app.state.health_secret = get_health_vault_secret()
+    app.state.channel_links = channel_links
+    app.state.registry = HealthRegistry()
+    app.state.spawner = HealthInstanceSpawner()
+    app.state.runtime_metrics = _runtime_metrics_state()
     app.state.whatsapp_monitor = monitor
 
     template_dir = Path(__file__).with_name("templates")
@@ -900,23 +923,6 @@ def create_app() -> FastAPI:
             detail=exc.errors(),
             request_id=_request_id_from_request(request),
         )
-
-    @app.on_event("startup")
-    async def startup() -> None:
-        await _cleanup_stale_setup_sessions(app)
-        await monitor.start()
-        app.state.instance_monitor_task = asyncio.create_task(_container_health_monitor(app))
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        await monitor.stop()
-        task = getattr(app.state, "instance_monitor_task", None)
-        if task is not None:
-            task.cancel()
-            try:
-                await task
-            except Exception:
-                pass
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-
 _BANNED_OPENERS: list[tuple[re.Pattern[str], str]] = [
     # Remove generic assistant framing when it leads the message.
     (re.compile(r"^\s*it sounds like[^.?!]*[.?!]\s*", re.IGNORECASE), ""),

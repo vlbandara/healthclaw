@@ -206,12 +206,12 @@ docker compose --env-file .env up -d --build
 
 ### Where do I get help?
 
-- [GitHub Discussions](https://github.com/vlbandara/Healthclaw/discussions) — Ask questions
-- [GitHub Issues](https://github.com/vlbandara/Healthclaw/issues) — Report bugs
+- [GitHub Discussions](https://github.com/vlbandara/healthclaw/discussions) — Ask questions
+- [GitHub Issues](https://github.com/vlbandara/healthclaw/issues) — Report bugs
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — How to contribute
 
 ---
 
 ## Still have questions?
 
-Open a [GitHub Discussion](https://github.com/vlbandara/Healthclaw/discussions) or [GitHub Issue](https://github.com/vlbandara/Healthclaw/issues/new/choose). We're happy to help.
+Open a [GitHub Discussion](https://github.com/vlbandara/healthclaw/discussions) or [GitHub Issue](https://github.com/vlbandara/healthclaw/issues/new/choose). We're happy to help.
