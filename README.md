@@ -1,10 +1,16 @@
 <div align="center">
 
-![Healthclaw — Private AI Wellbeing Companion](docs/assets/healthclaw_hero.png)
+<a href="https://vlbandara.github.io/healthclaw/">
+  <img src="docs/assets/healthclaw_repo_hero.png" alt="Healthclaw product page hero" width="920" />
+</a>
 
 # Healthclaw
 
-**Private, local-first wellbeing companions for individuals and families.**
+**Private, local-first wellbeing companion with family-safe multi-tenancy, calm companion UX, and optional Open Wearables integration.**
+
+Healthclaw turns the lightweight `nanobot` agent core into a calmer, more opinionated product for private wellbeing support, family-style multi-user setups, and self-hosted daily use.
+
+[Product Page](https://vlbandara.github.io/healthclaw/) • [Getting Started](docs/GETTING_STARTED.md) • [Family Mode](docs/FAMILY_WELLBEING_LOCAL_SETUP.md) • [Open Wearables](docs/OPENWEARABLES.md)
 
 [![Python ≥3.11](https://img.shields.io/badge/python-%E2%89%A53.11-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -22,6 +28,10 @@
 ## What It Is
 
 Healthclaw runs a personal AI companion on infrastructure you control. It can talk through Telegram and other channels, keep isolated long-term memory per user, run scheduled check-ins, and support family-style multi-tenant setups where each person gets a separate workspace.
+
+The repo is intentionally positioned between a general-purpose agent framework and a narrow product wrapper: you still get a readable, hackable codebase, but the default experience is steered toward privacy-first wellbeing companionship rather than generic automation.
+
+If you want the fast product overview first, use the public GitHub Pages site: [vlbandara.github.io/healthclaw](https://vlbandara.github.io/healthclaw/).
 
 For a first-time visitor, the short version is:
 
@@ -47,11 +57,45 @@ Healthclaw is for educational, personal, and research use. It is **not** a medic
 - **Channel support**: Telegram plus other channels supported by the underlying nanobot architecture
 - **Operator-friendly**: Docker, migrations, health endpoints, tests, and CI included
 
+## Positioning
+
+Healthclaw is best understood as a focused fork with two lineages:
+
+- **From nanobot**: the lightweight Python agent core, chat-channel architecture, memory model, and self-hosting path
+- **Alongside OpenClaw**: a more product-shaped agent experience, stronger opinionation around user workflows, and compatibility-minded skill conventions
+
+That makes Healthclaw a better fit when you want a companion that feels deliberate and private, not just a general-purpose agent shell. The biggest differences are the health-specific onboarding and prompt stack, family-safe multi-tenancy with isolated per-user workspaces, and optional Open Wearables grounding for more context-aware coaching.
+
+## Comparison
+
+| Dimension | [OpenClaw](https://github.com/openclaw/openclaw) | [nanobot](https://github.com/HKUDS/nanobot) | Healthclaw |
+|---|---|---|---|
+| Primary goal | Cross-platform personal AI assistant | Ultra-lightweight personal AI agent | Privacy-first wellbeing companion |
+| Core shape | Broader assistant platform with gateway-centric workflows and optional device apps | Small, readable Python core with channels, memory, MCP, and deployment docs | Opinionated fork of nanobot for health and daily support scenarios |
+| Best fit | Users who want a general assistant across more surfaces and devices | Builders who want a minimal agent they can study and extend | Individuals or families who want a calmer self-hosted companion with isolated memory |
+| Interaction style | Gateway plus optional desktop and mobile companion surfaces | CLI, chat channels, API, dev WebUI | Web onboarding plus Telegram-first companion flow |
+| Privacy posture | Personal assistant platform with local control options | Self-hostable with local or hosted model providers | Explicitly local-first, with separate per-user workspaces and memory boundaries |
+| Multi-tenancy model | General personal-assistant workflows across devices and apps | General-purpose agent runtime; health family isolation is not a built-in product story | Family-oriented multi-tenancy with isolated workspace, profile, memory, and runtime per user |
+| Wearables support | Broad assistant platform; this repo does not position OpenClaw around Healthclaw-style wellness data grounding | No built-in Healthclaw wearables onboarding flow in the upstream product | Optional Open Wearables integration with provider linking, sync, encrypted snapshot storage, and coaching-aware summaries |
+| Companion vibe | Personal assistant | Personal agent | Calm, grounded, coach-like companion shaped by health-specific onboarding, tone, lifecycle, and check-in prompts |
+| Domain focus | General-purpose personal assistant | General-purpose personal agent | Wellbeing check-ins, companion conversations, and family-style tenancy |
+| Runtime identity | `openclaw` brand and runtime | `nanobot` brand and runtime | `Healthclaw` brand with `nanobot` runtime compatibility in v0.2 |
+
 ## Why People Visit This Repo
 
+- **Understand the product quickly**: public GitHub Pages product page with the companion story and differentiation
 - **Try the release quickly**: local-first path with Docker and Ollama
 - **Evaluate the architecture**: public docs for setup, self-hosting, memory, and customization
 - **Fork or contribute**: community files, CI, and compatibility notes are already in place
+
+## Product Page
+
+The repo now includes a static GitHub Pages site in [`site/`](/Users/vinodhlahiru/Documents/Repos/nanobot/site/index.html) so visitors can understand Healthclaw without entering the live onboarding flow.
+
+- Expected URL: [vlbandara.github.io/healthclaw](https://vlbandara.github.io/healthclaw/)
+- Deploy source: `.github/workflows/pages.yml`
+- Static assets: `site/assets/`
+- Publish trigger: push to `main`
 
 ## Choose Your Setup Path
 
