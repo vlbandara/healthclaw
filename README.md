@@ -23,6 +23,13 @@
 
 Healthclaw runs a personal AI companion on infrastructure you control. It can talk through Telegram and other channels, keep isolated long-term memory per user, run scheduled check-ins, and support family-style multi-tenant setups where each person gets a separate workspace.
 
+For a first-time visitor, the short version is:
+
+- bring your own model provider: local Ollama or hosted APIs
+- onboard through a web flow, then continue in chat
+- keep each person isolated with separate memory and workspace state
+- self-host the stack with Docker instead of relying on a SaaS backend
+
 This repository is aimed at self-hosters and contributors who want:
 
 - local-first deployment with Ollama + Gemma
@@ -40,9 +47,22 @@ Healthclaw is for educational, personal, and research use. It is **not** a medic
 - **Channel support**: Telegram plus other channels supported by the underlying nanobot architecture
 - **Operator-friendly**: Docker, migrations, health endpoints, tests, and CI included
 
+## Why People Visit This Repo
+
+- **Try the release quickly**: local-first path with Docker and Ollama
+- **Evaluate the architecture**: public docs for setup, self-hosting, memory, and customization
+- **Fork or contribute**: community files, CI, and compatibility notes are already in place
+
+## Choose Your Setup Path
+
+| Path | Best for | What you need |
+|---|---|---|
+| Local + private | Personal use, demos, privacy-first setups | Docker, Ollama, a Telegram bot token |
+| Hosted provider | Faster setup on lighter hardware | Docker, a provider API key, a Telegram bot token |
+
 ## Quick Start
 
-### Local and Private
+### 1. Clone and Configure
 
 ```bash
 git clone https://github.com/vlbandara/healthclaw.git
@@ -50,7 +70,9 @@ cd healthclaw
 cp .env.example .env
 ```
 
-Install Ollama and pull a model:
+### 2. Pick a Provider
+
+Local and private with Ollama:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
@@ -68,28 +90,30 @@ HEALTH_VAULT_KEY=generate-a-fernet-key
 POSTGRES_PASSWORD=change-me
 ```
 
-Start the stack:
-
-```bash
-docker compose --env-file .env up -d --build postgres redis orchestrator worker
-```
-
-Open the onboarding surface at `http://localhost:18080`.
-
-### Cloud Provider Path
-
-You can also keep the Healthclaw product layer and use a hosted model provider:
+Hosted provider with OpenRouter:
 
 ```env
 NANOBOT_AGENTS__DEFAULTS__PROVIDER=openrouter
-NANOBOT_AGENTS__DEFAULTS__MODEL=anthropic/claude-opus-4-5
+NANOBOT_AGENTS__DEFAULTS__MODEL=openai/gpt-4o-mini
 OPENROUTER_API_KEY=your-key
 TELEGRAM_BOT_TOKEN=123456789:your-token
 HEALTH_VAULT_KEY=generate-a-fernet-key
 POSTGRES_PASSWORD=change-me
 ```
 
-The Docker startup command stays the same.
+### 3. Start the Stack
+
+Bring up the core services:
+
+```bash
+docker compose --env-file .env up -d --build postgres redis orchestrator worker
+```
+
+Open the onboarding surface at `http://localhost:18080`, connect your Telegram bot, and send your first message.
+
+If you also want wearable integrations, configure Open Wearables first and use the wearables step during hosted setup. See [Open Wearables Integration](docs/OPENWEARABLES.md).
+
+If you want the longer walkthrough, use [Getting Started](docs/GETTING_STARTED.md).
 
 ## Runtime Compatibility
 
@@ -107,8 +131,10 @@ That compatibility layer is intentional for v0.2. Healthclaw is the public brand
 - [Getting Started](docs/GETTING_STARTED.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Customization](docs/CUSTOMIZATION.md)
+- [Memory Model](docs/MEMORY.md)
 - [Family Local Setup](docs/FAMILY_WELLBEING_LOCAL_SETUP.md)
 - [Self-Hosting](docs/SELF_HOSTING.md)
+- [Open Wearables Integration](docs/OPENWEARABLES.md)
 - [Local Development](docs/LOCAL_DEVELOPMENT.md)
 - [FAQ](docs/FAQ.md)
 - [Security Policy](SECURITY.md)

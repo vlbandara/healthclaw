@@ -242,6 +242,74 @@ def test_setup_profile_allows_manual_timezone_override(tmp_path: Path, monkeypat
     assert stored["phase1"]["timezone"] == "America/New_York"
 
 
+def test_setup_wearables_connect_and_sync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _ = _make_client(tmp_path, monkeypatch)
+    token = "setup-wearables-token"
+    health = _setup_session_health(tmp_path, token)
+    health.create_setup_session_with_token(token)
+    monkeypatch.setenv("OPENWEARABLES_API_URL", "https://wearables.example.test")
+    monkeypatch.setenv("OPENWEARABLES_API_KEY", "ow-secret-key")
+
+    class _FakeOpenWearablesClient:
+        async def list_enabled_providers(self):
+            return [{"provider": "garmin", "name": "Garmin", "is_enabled": True, "has_cloud_api": True}]
+
+        async def get_or_create_user(self, *, external_user_id: str, email: str = "", display_name: str = ""):
+            return {"id": "ow-user-123", "external_user_id": external_user_id}
+
+        async def authorize_provider(self, *, provider: str, user_id: str, redirect_uri: str):
+            return {"authorization_url": "https://wearables.example.test/oauth/garmin", "state": "abc123"}
+
+        async def list_connections(self, user_id: str):
+            return [{"provider": "garmin", "status": "active", "last_synced_at": "2026-04-27T10:30:00Z"}]
+
+        async def sync_provider(self, *, provider: str, user_id: str):
+            return {"status": "ok"}
+
+        async def fetch_snapshot(self, *, user_id: str, connections=None):
+            from nanobot.health.openwearables import WearableSnapshot
+
+            return WearableSnapshot(
+                generated_at="2026-04-27T10:35:00Z",
+                connected_providers=["garmin"],
+                last_sync_at="2026-04-27T10:30:00Z",
+                freshness="fresh",
+                freshness_note="fresh (0h since last sync)",
+                summaries={"sleep": {"date": "2026-04-27", "score": 81}},
+                health_scores={"sleep_score": 81},
+                trend_flags=["sleep score improved versus the prior day"],
+                notes=[],
+            )
+
+    fake = _FakeOpenWearablesClient()
+    monkeypatch.setattr(
+        "nanobot.health.openwearables.OpenWearablesClient.from_env",
+        classmethod(lambda cls: fake),
+    )
+
+    providers = client.get(f"/api/setup/{token}/wearables/providers")
+    assert providers.status_code == 200
+    assert providers.json()["providers"][0]["provider"] == "garmin"
+
+    connect = client.post(f"/api/setup/{token}/wearables/connect", json={"provider": "garmin"})
+    assert connect.status_code == 200
+    assert connect.json()["authorizationUrl"] == "https://wearables.example.test/oauth/garmin"
+
+    status = client.get(f"/api/setup/{token}/wearables/status")
+    assert status.status_code == 200
+    assert status.json()["wearables"]["connected_providers"] == ["garmin"]
+
+    sync = client.post(f"/api/setup/{token}/wearables/sync", json={"provider": ""})
+    assert sync.status_code == 200
+    assert sync.json()["snapshot"]["connected_providers"] == ["garmin"]
+
+    root_status = client.get(f"/api/setup/{token}/status")
+    assert root_status.status_code == 200
+    assert root_status.json()["wearables"]["connected_providers"] == ["garmin"]
+    ciphertext = health.setup_secrets_path.read_text(encoding="utf-8")
+    assert "ow-user-123" not in ciphertext
+
+
 def test_setup_rejects_activation_without_connected_channel(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

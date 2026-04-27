@@ -44,6 +44,7 @@ from nanobot.health.continuity import (
     select_opening_style,
     select_variation_mode,
 )
+from nanobot.health.openwearables import wearable_context_lines
 from nanobot.health.safety import emergency_response, is_emergency_language
 from nanobot.health.storage import HealthWorkspace, health_distribution_enabled, is_health_workspace
 from nanobot.providers.base import GenerationSettings, LLMProvider
@@ -466,6 +467,12 @@ class AgentLoop:
             extra["Opening Style"] = opening_style
         if input_mode and input_mode != "text":
             extra["Input Mode"] = input_mode
+        try:
+            wearable_lines = wearable_context_lines(HealthWorkspace(self.workspace))
+        except Exception:
+            wearable_lines = []
+        if wearable_lines:
+            extra["Wearable Context"] = " | ".join(wearable_lines)
         return extra or None
 
     def _refresh_health_timezone(self) -> None:

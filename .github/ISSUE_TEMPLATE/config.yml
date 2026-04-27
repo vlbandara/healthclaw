@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and setup help
+    url: https://github.com/vlbandara/healthclaw/discussions
+    about: Use GitHub Discussions for troubleshooting, setup questions, and usage help.
+  - name: Read the docs
+    url: https://github.com/vlbandara/healthclaw#documentation
+    about: Start here for getting started, self-hosting, customization, and FAQ.

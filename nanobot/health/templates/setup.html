@@ -281,8 +281,46 @@
             </section>
           </section>
 
-          <!-- Step 2: Vibe -->
+          <!-- Step 2: Wearables -->
           <section class="step" data-step="2">
+            <h2 class="step-heading">Connect wearables</h2>
+            <p class="step-copy">Optional for v1. If Open Wearables is enabled on this Healthclaw host, you can link a supported provider now and let your companion use recent sleep, recovery, and activity summaries.</p>
+
+            <section class="channel-card channel-card--setup active">
+              <div class="channel-card__header">
+                <div>
+                  <h3>Open Wearables</h3>
+                  <p class="helper">One connection layer for Garmin, Polar, Suunto, Whoop, Strava, Fitbit, and other supported cloud providers.</p>
+                </div>
+                <span class="channel-badge" id="wearables-badge">Experimental</span>
+              </div>
+
+              <div class="channel-compact-status" id="wearables-configured-state" hidden>
+                <strong>Wearables are enabled on this host.</strong>
+                <p id="wearables-configured-copy" class="helper">Choose a provider to start OAuth.</p>
+              </div>
+
+              <label class="tap-field">
+                <span>Provider</span>
+                <select id="wearables-provider-select" name="wearables_provider">
+                  <option value="">Choose a provider…</option>
+                </select>
+              </label>
+
+              <div class="support-actions" style="margin-top:0.75rem">
+                <button type="button" id="connect-wearable">Connect wearable</button>
+                <button type="button" id="sync-wearables" class="secondary">Sync now</button>
+              </div>
+              <p id="wearables-summary" class="helper channel-inline-status">You can skip this for now and add it later.</p>
+              <div class="summary-card" style="margin-top:0.85rem">
+                <p id="wearables-connected-list" class="helper">Connected providers: none.</p>
+                <p id="wearables-freshness" class="helper">No wearable snapshot yet.</p>
+              </div>
+            </section>
+          </section>
+
+          <!-- Step 3: Vibe -->
+          <section class="step" data-step="3">
             <h2 class="step-heading">Pick the starting vibe</h2>
             <p class="step-copy">Just the starting point. It can adapt as it learns what actually helps. We also detect your timezone here, but you can override it now and change it later in chat.</p>
             <div class="tap-grid tap-grid--vibe">
@@ -323,8 +361,8 @@
             <div class="time-pill" id="setup-timezone-pill">Detected here: checking your local time…</div>
           </section>
 
-          <!-- Step 3: Activate -->
-          <section class="step" data-step="3">
+          <!-- Step 4: Activate -->
+          <section class="step" data-step="4">
             <h2 class="step-heading">Turn it on</h2>
             <p class="step-copy">We'll switch everything on and send you straight into Telegram. Your timezone is summarized here so you can catch it before activation.</p>
             <div class="summary-card">

@@ -15,6 +15,15 @@ const telegramSummary = document.getElementById("telegram-summary");
 const telegramConnectedState = document.getElementById("telegram-connected-state");
 const telegramConnectedCopy = document.getElementById("telegram-connected-copy");
 const telegramBadge = document.getElementById("telegram-badge");
+const wearablesBadge = document.getElementById("wearables-badge");
+const wearablesConfiguredState = document.getElementById("wearables-configured-state");
+const wearablesConfiguredCopy = document.getElementById("wearables-configured-copy");
+const wearablesProviderSelect = document.getElementById("wearables-provider-select");
+const wearablesSummary = document.getElementById("wearables-summary");
+const wearablesConnectedList = document.getElementById("wearables-connected-list");
+const wearablesFreshness = document.getElementById("wearables-freshness");
+const connectWearableButton = document.getElementById("connect-wearable");
+const syncWearablesButton = document.getElementById("sync-wearables");
 const finishSummary = document.getElementById("finish-summary");
 const finishTimezone = document.getElementById("finish-timezone");
 const connectTelegramButton = document.getElementById("connect-telegram");
@@ -442,14 +451,83 @@ function renderTelegramState(telegram) {
   }
 }
 
+function renderWearablesState(wearables) {
+  const configured = Boolean(wearables?.configured);
+  if (wearablesConfiguredState) {
+    wearablesConfiguredState.hidden = !configured;
+  }
+  if (wearablesConfiguredCopy) {
+    wearablesConfiguredCopy.textContent = configured
+      ? "Choose a provider to start OAuth, or skip this for now."
+      : "This Healthclaw host does not have Open Wearables configured yet.";
+  }
+  if (wearablesBadge) {
+    wearablesBadge.textContent = configured ? "Experimental" : "Unavailable";
+  }
+  if (wearablesProviderSelect) {
+    const currentValue = wearablesProviderSelect.value;
+    const providers = Array.isArray(wearables?.available_providers) ? wearables.available_providers : [];
+    wearablesProviderSelect.innerHTML = '<option value="">Choose a provider…</option>';
+    providers.forEach((provider) => {
+      const option = document.createElement("option");
+      option.value = provider.provider;
+      option.textContent = provider.name || provider.provider;
+      wearablesProviderSelect.appendChild(option);
+    });
+    if (currentValue && providers.some((provider) => provider.provider === currentValue)) {
+      wearablesProviderSelect.value = currentValue;
+    }
+    wearablesProviderSelect.disabled = !configured;
+  }
+  if (connectWearableButton) {
+    connectWearableButton.disabled = !configured;
+  }
+  if (syncWearablesButton) {
+    syncWearablesButton.disabled = !configured;
+  }
+  const connected = Array.isArray(wearables?.connected_providers) ? wearables.connected_providers : [];
+  if (wearablesConnectedList) {
+    wearablesConnectedList.textContent = `Connected providers: ${connected.length ? connected.join(", ") : "none"}.`;
+  }
+  if (wearablesFreshness) {
+    const freshness = wearables?.snapshot?.freshness_note || wearables?.snapshot?.freshness || "";
+    wearablesFreshness.textContent = freshness
+      ? `Data freshness: ${freshness}.`
+      : "No wearable snapshot yet.";
+  }
+  if (wearablesSummary) {
+    if (!configured) {
+      setInlineStatus(wearablesSummary, "Open Wearables is not configured on this host.");
+    } else if (wearables?.last_error) {
+      setInlineStatus(wearablesSummary, wearables.last_error, true);
+    } else if (connected.length) {
+      const lastSync = wearables?.last_sync_at || "not synced yet";
+      setInlineStatus(wearablesSummary, `Connected to ${connected.join(", ")}. Last sync: ${lastSync}.`);
+    } else {
+      setInlineStatus(wearablesSummary, "You can skip this for now and add it later.");
+    }
+  }
+}
+
 async function refreshStatus() {
   const token = form.dataset.setupToken;
   setupState = await fetchJson(`/api/setup/${token}/status`);
   const channels = setupState.channels || {};
   const telegram = channels.telegram || {};
+  let wearables = setupState.wearables || {};
+  if (wearables.configured && (!Array.isArray(wearables.available_providers) || wearables.available_providers.length === 0)) {
+    try {
+      const data = await fetchJson(`/api/setup/${token}/wearables/providers`);
+      wearables = data.wearables || wearables;
+      setupState.wearables = wearables;
+    } catch (e) {
+      // Keep the last known state.
+    }
+  }
 
   fillProfile(setupState.profile);
   renderTelegramState(telegram);
+  renderWearablesState(wearables);
 
   const reminderPreferences = (setupState.profile?.phase2 || {}).reminder_preferences || [];
   if (Array.isArray(reminderPreferences) && reminderPreferences.length) {
@@ -500,6 +578,38 @@ async function saveProfile() {
   setStatus("Saved.");
 }
 
+async function connectWearable() {
+  const token = form.dataset.setupToken;
+  const provider = wearablesProviderSelect?.value || "";
+  if (!provider) {
+    throw new Error("Choose a wearable provider first.");
+  }
+  setInlineStatus(wearablesSummary, "Starting wearable connection…");
+  const data = await fetchJson(`/api/setup/${token}/wearables/connect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider }),
+  });
+  await refreshStatus();
+  const authUrl = data.authorizationUrl || "";
+  if (!authUrl) {
+    throw new Error("Open Wearables did not return an authorization URL.");
+  }
+  window.location.href = authUrl;
+}
+
+async function syncWearables() {
+  const token = form.dataset.setupToken;
+  setInlineStatus(wearablesSummary, "Syncing wearable data…");
+  await fetchJson(`/api/setup/${token}/wearables/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: wearablesProviderSelect?.value || "" }),
+  });
+  await refreshStatus();
+  setInlineStatus(wearablesSummary, "Wearable data synced.");
+}
+
 async function activateSetup() {
   const token = form.dataset.setupToken;
   setStatus("Starting your companion…");
@@ -536,8 +646,14 @@ async function handleNext() {
       updateStep();
       return;
     }
-    // Step 2: Vibe/profile
+    // Step 2: Wearables (optional)
     if (currentStep === 2) {
+      currentStep += 1;
+      updateStep();
+      return;
+    }
+    // Step 3: Vibe/profile
+    if (currentStep === 3) {
       await saveProfile();
       currentStep += 1;
       updateStep();
@@ -554,6 +670,26 @@ connectTelegramButton.addEventListener("click", async () => {
     setInlineStatus(telegramSummary, error.message || "Unable to connect Telegram.", true);
   }
 });
+
+if (connectWearableButton) {
+  connectWearableButton.addEventListener("click", async () => {
+    try {
+      await connectWearable();
+    } catch (error) {
+      setInlineStatus(wearablesSummary, error.message || "Unable to start wearable connection.", true);
+    }
+  });
+}
+
+if (syncWearablesButton) {
+  syncWearablesButton.addEventListener("click", async () => {
+    try {
+      await syncWearables();
+    } catch (error) {
+      setInlineStatus(wearablesSummary, error.message || "Unable to sync wearables.", true);
+    }
+  });
+}
 
 if (openBotFatherButton) {
   openBotFatherButton.addEventListener("click", () => {

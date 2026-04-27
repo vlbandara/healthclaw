@@ -36,6 +36,6 @@ docker compose --env-file .env.local down
 uv run ruff check nanobot tests
 uv run pytest -q
 uv build
-docker compose config
+docker compose --env-file .env.local config
 cd bridge && npm ci && npm run build
 ```

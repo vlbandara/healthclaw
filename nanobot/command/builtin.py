@@ -9,6 +9,12 @@ import sys
 from nanobot import __version__
 from nanobot.bus.events import OutboundMessage
 from nanobot.command.router import CommandContext, CommandRouter
+from nanobot.health.openwearables import (
+    openwearables_enabled,
+    refresh_wearables_connections,
+    sync_wearable_snapshot,
+)
+from nanobot.health.storage import HealthWorkspace
 from nanobot.utils.helpers import build_status_content
 from nanobot.utils.restart import set_restart_notice_to_env
 
@@ -300,8 +306,6 @@ async def cmd_help(ctx: CommandContext) -> OutboundMessage:
 
 async def cmd_onboard(ctx: CommandContext) -> OutboundMessage:
     """Create a one-time health onboarding invite."""
-    from nanobot.health.storage import HealthWorkspace
-
     if ctx.msg.channel not in {"telegram", "whatsapp"}:
         return OutboundMessage(
             channel=ctx.msg.channel,
@@ -323,6 +327,97 @@ async def cmd_onboard(ctx: CommandContext) -> OutboundMessage:
     )
 
 
+async def cmd_wearables(ctx: CommandContext) -> OutboundMessage:
+    """Show current wearable connection state for a health workspace."""
+    health = HealthWorkspace(ctx.loop.workspace)
+    if not health.enabled:
+        content = "Wearables are only available in health-enabled workspaces."
+        return OutboundMessage(channel=ctx.msg.channel, chat_id=ctx.msg.chat_id, content=content, metadata={"render_as": "text"})
+
+    if openwearables_enabled():
+        try:
+            await refresh_wearables_connections(health)
+        except Exception:
+            pass
+
+    setup = health.load_setup() or {}
+    wearables = dict(setup.get("wearables") or {})
+    snapshot = health.load_wearables_cache() or {}
+    providers = ", ".join(wearables.get("connected_providers") or []) or "none"
+    requested = ", ".join(wearables.get("requested_providers") or []) or "none"
+    lines = [
+        "## Wearables",
+        "",
+        f"- Feature enabled: {'yes' if openwearables_enabled() else 'no'}",
+        f"- Requested providers: {requested}",
+        f"- Connected providers: {providers}",
+        f"- Last sync status: {wearables.get('last_sync_status') or 'idle'}",
+        f"- Last sync at: {wearables.get('last_sync_at') or 'never'}",
+    ]
+    if snapshot:
+        freshness = str(snapshot.get("freshness_note") or snapshot.get("freshness") or "").strip()
+        if freshness:
+            lines.append(f"- Data freshness: {freshness}")
+        if snapshot.get("trend_flags"):
+            lines.append(f"- Trend flags: {', '.join(snapshot['trend_flags'])}")
+    if wearables.get("last_error"):
+        lines.append(f"- Last error: {wearables['last_error']}")
+    if not openwearables_enabled():
+        lines.extend([
+            "",
+            "Set `OPENWEARABLES_API_URL` and `OPENWEARABLES_API_KEY` on the host to enable this feature.",
+        ])
+    return OutboundMessage(
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content="\n".join(lines),
+        metadata={"render_as": "text"},
+    )
+
+
+async def cmd_wearables_sync(ctx: CommandContext) -> OutboundMessage:
+    """Trigger a manual wearable sync for the active health workspace."""
+    health = HealthWorkspace(ctx.loop.workspace)
+    if not health.enabled:
+        return OutboundMessage(
+            channel=ctx.msg.channel,
+            chat_id=ctx.msg.chat_id,
+            content="Wearables are only available in health-enabled workspaces.",
+            metadata={"render_as": "text"},
+        )
+    if not openwearables_enabled():
+        return OutboundMessage(
+            channel=ctx.msg.channel,
+            chat_id=ctx.msg.chat_id,
+            content="Open Wearables is not configured on this Healthclaw instance.",
+            metadata={"render_as": "text"},
+        )
+    provider = ctx.args.strip().lower() or None
+    try:
+        snapshot = await sync_wearable_snapshot(health, provider=provider)
+    except Exception as exc:
+        return OutboundMessage(
+            channel=ctx.msg.channel,
+            chat_id=ctx.msg.chat_id,
+            content=f"Wearable sync failed: {exc}",
+            metadata={"render_as": "text"},
+        )
+    providers = ", ".join(snapshot.connected_providers) or "none"
+    lines = [
+        "Wearable sync completed.",
+        f"Connected providers: {providers}",
+        f"Last sync at: {snapshot.last_sync_at or snapshot.generated_at}",
+    ]
+    if snapshot.trend_flags:
+        lines.append(f"Trend flags: {', '.join(snapshot.trend_flags)}")
+    return OutboundMessage(
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content="\n".join(lines),
+        metadata={"render_as": "text"},
+    )
+
+
 def build_help_text(assistant_name: str = "nanobot") -> str:
     """Build canonical help text shared across channels."""
     lines = [
@@ -332,6 +427,8 @@ def build_help_text(assistant_name: str = "nanobot") -> str:
         "/restart — Restart the bot",
         "/status — Show bot status",
         "/onboard — Create a health onboarding link",
+        "/wearables — Show wearable connection status",
+        "/wearables sync — Refresh wearable data now",
         "/dream — Manually trigger Dream consolidation",
         "/dream-log — Show what the last Dream changed",
         "/dream-restore — Revert memory to a previous state",
@@ -348,6 +445,9 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.exact("/new", cmd_new)
     router.exact("/status", cmd_status)
     router.exact("/onboard", cmd_onboard)
+    router.exact("/wearables", cmd_wearables)
+    router.exact("/wearables sync", cmd_wearables_sync)
+    router.prefix("/wearables sync ", cmd_wearables_sync)
     router.exact("/dream", cmd_dream)
     router.exact("/dream-log", cmd_dream_log)
     router.prefix("/dream-log ", cmd_dream_log)

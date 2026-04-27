@@ -23,6 +23,7 @@ _INVITES_NAME = "invites.json"
 _SETUP_NAME = "setup.json"
 _SETUP_SECRETS_NAME = "setup-secrets.json.enc"
 _RUNTIME_NAME = "runtime.json"
+_WEARABLES_CACHE_NAME = "wearables-cache.json.enc"
 _DEFAULT_INVITE_TTL_HOURS = 24
 _DEFAULT_SETUP_TTL_HOURS = 24 * 7
 _DEFAULT_HOSTED_PROVIDER = "minimax"
@@ -126,6 +127,22 @@ def _default_setup_payload(token: str, *, ttl_hours: int) -> dict[str, Any]:
             "phase1": {},
             "phase2": {},
         },
+        "wearables": {
+            "enabled": False,
+            "available_providers": [],
+            "requested_providers": [],
+            "connected_providers": [],
+            "authorization": {
+                "provider": "",
+                "state": "",
+                "redirect_uri": "",
+                "started_at": None,
+            },
+            "last_sync_at": "",
+            "last_sync_status": "idle",
+            "last_error": "",
+            "user_linked_at": None,
+        },
     }
 
 
@@ -137,6 +154,13 @@ def _default_runtime_payload() -> dict[str, Any]:
         "last_weekly_summary_sent_iso_week": "",
         "last_proactive_delivery_at": "",
         "last_proactive_source": "",
+        "wearables": {
+            "last_sync_at": "",
+            "last_sync_status": "idle",
+            "snapshot_updated_at": "",
+            "freshness": "",
+            "connected_providers": [],
+        },
     }
 
 
@@ -288,6 +312,7 @@ class HealthWorkspace:
         self.setup_path = self.health_dir / _SETUP_NAME
         self.setup_secrets_path = self.health_dir / _SETUP_SECRETS_NAME
         self.runtime_path = self.health_dir / _RUNTIME_NAME
+        self.wearables_cache_path = self.health_dir / _WEARABLES_CACHE_NAME
 
     @property
     def enabled(self) -> bool:
@@ -324,6 +349,19 @@ class HealthWorkspace:
             encoding="utf-8",
         )
         return normalized
+
+    def load_wearables_cache(self, *, secret: str | None = None) -> dict[str, Any] | None:
+        if not self.wearables_cache_path.exists():
+            return None
+        ciphertext = self.wearables_cache_path.read_text(encoding="utf-8").strip()
+        if not ciphertext:
+            return None
+        return decrypt_json(ciphertext, secret=secret)
+
+    def save_wearables_cache(self, payload: dict[str, Any], *, secret: str | None = None) -> None:
+        ensure_dir(self.health_dir)
+        encrypted = encrypt_json(payload, secret=secret)
+        self.wearables_cache_path.write_text(encrypted + "\n", encoding="utf-8")
 
     def refresh_workspace_assets(self, *, include_memory: bool = False) -> None:
         profile = self.load_profile()
@@ -427,6 +465,9 @@ class HealthWorkspace:
         proactive_enabled: bool | None = None,
         voice_preferred: bool | None = None,
         last_seen_local_date: str | None = None,
+        wearables_enabled: bool | None = None,
+        wearable_preferred_providers: list[str] | None = None,
+        wearables_use_for_coaching: bool | None = None,
         secret: str | None = None,
     ) -> dict[str, Any]:
         profile = self.load_profile()
@@ -488,6 +529,26 @@ class HealthWorkspace:
             profile["last_seen_local_date"] = cleaned
             changed["last_seen_local_date"] = cleaned
 
+        wearables = profile.setdefault("wearables", {})
+        if wearables_enabled is not None:
+            cleaned = normalize_optional_bool(wearables_enabled)
+            wearables["enabled"] = cleaned
+            changed["wearables_enabled"] = cleaned
+        if wearable_preferred_providers is not None:
+            cleaned = sorted(
+                {
+                    str(item or "").strip().lower()
+                    for item in wearable_preferred_providers
+                    if str(item or "").strip()
+                }
+            )
+            wearables["preferred_providers"] = cleaned
+            changed["wearable_preferred_providers"] = cleaned
+        if wearables_use_for_coaching is not None:
+            cleaned = normalize_optional_bool(wearables_use_for_coaching)
+            wearables["use_for_coaching"] = cleaned
+            changed["wearables_use_for_coaching"] = cleaned
+
         self.save_profile(profile)
         if changed:
             self.refresh_workspace_assets(include_memory=False)
@@ -517,6 +578,85 @@ class HealthWorkspace:
             encoding="utf-8",
         )
 
+    def store_wearables_setup_state(
+        self,
+        *,
+        enabled: bool | None = None,
+        available_providers: list[dict[str, Any]] | None = None,
+        requested_providers: list[str] | None = None,
+        connections: list[dict[str, Any]] | None = None,
+        authorization: dict[str, Any] | None = None,
+        last_sync_at: str | None = None,
+        last_sync_status: str | None = None,
+        last_error: str | None = None,
+    ) -> dict[str, Any]:
+        setup = self.load_setup() or {}
+        wearables = setup.setdefault("wearables", {})
+        if enabled is not None:
+            wearables["enabled"] = bool(enabled)
+        if available_providers is not None:
+            wearables["available_providers"] = available_providers
+        if requested_providers is not None:
+            wearables["requested_providers"] = sorted(
+                {
+                    str(item or "").strip().lower()
+                    for item in requested_providers
+                    if str(item or "").strip()
+                }
+            )
+        if connections is not None:
+            connected = [
+                str(item.get("provider") or "").strip().lower()
+                for item in connections
+                if str(item.get("status") or "").strip().lower() == "active"
+            ]
+            wearables["connected_providers"] = sorted({item for item in connected if item})
+            if wearables["connected_providers"] and not wearables.get("user_linked_at"):
+                wearables["user_linked_at"] = _isoformat(_utcnow())
+        if authorization is not None:
+            wearables["authorization"] = _merge_dict(
+                {
+                    "provider": "",
+                    "state": "",
+                    "redirect_uri": "",
+                    "started_at": None,
+                },
+                authorization,
+            )
+        if last_sync_at is not None:
+            wearables["last_sync_at"] = str(last_sync_at or "").strip()
+        if last_sync_status is not None:
+            wearables["last_sync_status"] = str(last_sync_status or "").strip() or "idle"
+        if last_error is not None:
+            wearables["last_error"] = str(last_error or "").strip()
+        self.save_setup(setup)
+        return setup
+
+    def update_wearables_preferences(
+        self,
+        *,
+        enabled: bool | None = None,
+        preferred_providers: list[str] | None = None,
+        use_for_coaching: bool | None = None,
+    ) -> dict[str, Any]:
+        profile = self.load_profile() or {}
+        wearables = profile.setdefault("wearables", {})
+        if enabled is not None:
+            wearables["enabled"] = bool(enabled)
+        if preferred_providers is not None:
+            wearables["preferred_providers"] = sorted(
+                {
+                    str(item or "").strip().lower()
+                    for item in preferred_providers
+                    if str(item or "").strip()
+                }
+            )
+        if use_for_coaching is not None:
+            wearables["use_for_coaching"] = bool(use_for_coaching)
+        if profile:
+            self.save_profile(profile)
+        return profile
+
     def load_setup_secrets(self, *, secret: str | None = None) -> dict[str, Any]:
         if not self.setup_secrets_path.exists():
             return {}
@@ -529,6 +669,44 @@ class HealthWorkspace:
         ensure_dir(self.health_dir)
         encrypted = encrypt_json(payload, secret=secret)
         self.setup_secrets_path.write_text(encrypted + "\n", encoding="utf-8")
+
+    def load_openwearables_identity(self, *, secret: str | None = None) -> dict[str, Any]:
+        payload = self.load_setup_secrets(secret=secret)
+        wearables = payload.get("wearables") or {}
+        return {
+            "openwearables_user_id": str(wearables.get("openwearables_user_id") or "").strip(),
+            "external_user_id": str(wearables.get("external_user_id") or "").strip(),
+        }
+
+    def store_openwearables_identity(
+        self,
+        *,
+        openwearables_user_id: str,
+        external_user_id: str,
+        secret: str | None = None,
+    ) -> dict[str, Any]:
+        payload = self.load_setup_secrets(secret=secret)
+        wearables = payload.setdefault("wearables", {})
+        wearables["openwearables_user_id"] = str(openwearables_user_id or "").strip()
+        wearables["external_user_id"] = str(external_user_id or "").strip()
+        self.save_setup_secrets(payload, secret=secret)
+        self.store_wearables_setup_state(enabled=True)
+        return wearables
+
+    def record_wearables_runtime(
+        self,
+        *,
+        snapshot: dict[str, Any],
+        status: str,
+    ) -> dict[str, Any]:
+        runtime = self.load_runtime()
+        wearables = runtime.setdefault("wearables", {})
+        wearables["last_sync_at"] = str(snapshot.get("last_sync_at") or snapshot.get("generated_at") or "").strip()
+        wearables["snapshot_updated_at"] = str(snapshot.get("generated_at") or "").strip()
+        wearables["freshness"] = str(snapshot.get("freshness") or "").strip()
+        wearables["connected_providers"] = list(snapshot.get("connected_providers") or [])
+        wearables["last_sync_status"] = str(status or "").strip() or "idle"
+        return self.save_runtime(runtime)
 
     def load_invites(self) -> dict[str, dict[str, Any]]:
         if not self.invites_path.exists():
@@ -892,6 +1070,41 @@ class HealthWorkspace:
             "phase1": phase1,
             "phase2": dict(profile.get("phase2") or {}),
         }
+
+    def apply_wearables_seed(self, seed: dict[str, Any], *, secret: str | None = None) -> None:
+        if not isinstance(seed, dict):
+            return
+        preferred_providers = list(seed.get("preferred_providers") or seed.get("connected_providers") or [])
+        self.update_wearables_preferences(
+            enabled=bool(seed.get("enabled")),
+            preferred_providers=preferred_providers,
+            use_for_coaching=bool(seed.get("use_for_coaching", False)),
+        )
+        user_id = str(seed.get("openwearables_user_id") or "").strip()
+        external_user_id = str(seed.get("external_user_id") or "").strip()
+        if user_id or external_user_id:
+            self.store_openwearables_identity(
+                openwearables_user_id=user_id,
+                external_user_id=external_user_id,
+                secret=secret,
+            )
+        snapshot = seed.get("snapshot")
+        if isinstance(snapshot, dict) and snapshot:
+            self.save_wearables_cache(snapshot, secret=secret)
+            self.record_wearables_runtime(
+                snapshot=snapshot,
+                status=str(snapshot.get("last_sync_status") or "ok"),
+            )
+            self.store_wearables_setup_state(
+                enabled=bool(seed.get("enabled")),
+                requested_providers=preferred_providers,
+                connections=[
+                    {"provider": provider, "status": "active"}
+                    for provider in list(seed.get("connected_providers") or [])
+                ],
+                last_sync_at=str(snapshot.get("last_sync_at") or snapshot.get("generated_at") or ""),
+                last_sync_status=str(snapshot.get("last_sync_status") or "ok"),
+            )
 
 
 def is_health_workspace(workspace: Path) -> bool:
