@@ -15,6 +15,7 @@ from nanobot.bus.queue import MessageBus
 from nanobot.cli.commands import _pick_routable_heartbeat_target
 from nanobot.health.bootstrap import persist_health_onboarding, write_health_workspace_assets
 from nanobot.health.continuity import TemporalContext
+from nanobot.health.openwearables import WearableSnapshot
 from nanobot.health.storage import HealthWorkspace
 from nanobot.session.manager import SessionManager
 
@@ -490,3 +491,106 @@ async def test_health_runtime_behavior_overlay_is_injected(
     assert "Response mode for this turn: ground" in system_prompt
     assert "Input mode: voice" in system_prompt
     assert "Variation Mode: ground" in user_content
+
+
+def test_health_runtime_context_includes_wearable_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HEALTH_VAULT_KEY", "test-health-vault-key")
+    _enable_health(tmp_path)
+    health = HealthWorkspace(tmp_path)
+    health.save_wearables_cache(
+        {
+            "generated_at": "2026-04-27T10:35:00Z",
+            "connected_providers": ["garmin"],
+            "last_sync_at": "2026-04-27T10:30:00Z",
+            "freshness": "fresh",
+            "freshness_note": "fresh (0h since last sync)",
+            "summaries": {"sleep": {"date": "2026-04-27", "score": 82}},
+            "health_scores": {"sleep_score": 82},
+            "trend_flags": ["sleep score improved versus the prior day"],
+            "notes": [],
+        },
+        secret="test-health-vault-key",
+    )
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    provider.generation.max_tokens = 4096
+
+    loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path)
+    extra = loop._health_runtime_context_extra()
+
+    assert extra is not None
+    assert "Wearable Context" in extra
+    assert "Connected Providers: garmin" in extra["Wearable Context"]
+
+
+@pytest.mark.asyncio
+async def test_wearables_command_reports_cached_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HEALTH_VAULT_KEY", "test-health-vault-key")
+    _enable_health(tmp_path)
+    health = HealthWorkspace(tmp_path)
+    health.create_setup_session_with_token("setup-wearables")
+    health.store_wearables_setup_state(
+        enabled=True,
+        requested_providers=["garmin"],
+        connections=[{"provider": "garmin", "status": "active", "last_synced_at": "2026-04-27T10:30:00Z"}],
+        last_sync_at="2026-04-27T10:30:00Z",
+        last_sync_status="ok",
+    )
+    health.save_wearables_cache(
+        {
+            "generated_at": "2026-04-27T10:35:00Z",
+            "connected_providers": ["garmin"],
+            "last_sync_at": "2026-04-27T10:30:00Z",
+            "freshness": "fresh",
+            "freshness_note": "fresh (0h since last sync)",
+            "summaries": {"sleep": {"date": "2026-04-27", "score": 82}},
+            "health_scores": {"sleep_score": 82},
+            "trend_flags": ["sleep score improved versus the prior day"],
+            "notes": [],
+        },
+        secret="test-health-vault-key",
+    )
+
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    provider.generation.max_tokens = 4096
+    loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path)
+
+    response = await loop.process_direct("/wearables", channel="telegram", chat_id="123")
+
+    assert "Connected providers: garmin" in response.content
+    assert "Last sync status: ok" in response.content
+
+
+@pytest.mark.asyncio
+async def test_wearables_sync_command_uses_sync_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HEALTH_VAULT_KEY", "test-health-vault-key")
+    _enable_health(tmp_path)
+    monkeypatch.setenv("OPENWEARABLES_API_URL", "https://wearables.example.test")
+    monkeypatch.setenv("OPENWEARABLES_API_KEY", "ow-secret-key")
+
+    async def fake_sync(_health: HealthWorkspace, provider: str | None = None) -> WearableSnapshot:
+        assert provider is None
+        return WearableSnapshot(
+            generated_at="2026-04-27T10:35:00Z",
+            connected_providers=["garmin"],
+            last_sync_at="2026-04-27T10:30:00Z",
+            freshness="fresh",
+            freshness_note="fresh (0h since last sync)",
+            summaries={},
+            health_scores={},
+            trend_flags=["sleep score improved versus the prior day"],
+            notes=[],
+        )
+
+    monkeypatch.setattr("nanobot.command.builtin.sync_wearable_snapshot", fake_sync)
+
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    provider.generation.max_tokens = 4096
+    loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path)
+
+    response = await loop.process_direct("/wearables sync", channel="telegram", chat_id="123")
+
+    assert "Wearable sync completed." in response.content
+    assert "Connected providers: garmin" in response.content

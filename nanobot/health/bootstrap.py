@@ -223,6 +223,7 @@ def build_profile_payload(submission: dict[str, Any], *, channel: str, user_toke
     """Build the pseudonymized health profile written to disk."""
     phase1 = submission["phase1"]
     phase2 = submission["phase2"]
+    wearables_seed = submission.get("_wearables") or {}
     return {
         "mode": "health",
         "user_token": user_token,
@@ -270,6 +271,13 @@ def build_profile_payload(submission: dict[str, Any], *, channel: str, user_toke
         "voice_preferred": False,
         "last_seen_local_date": "",
         "last_open_loop": "none",
+        "wearables": {
+            "enabled": bool(wearables_seed.get("enabled")),
+            "preferred_providers": _clean_list(
+                wearables_seed.get("preferred_providers") or wearables_seed.get("connected_providers")
+            ),
+            "use_for_coaching": bool(wearables_seed.get("use_for_coaching", False)),
+        },
         "channel_binding": {
             "preferred_channel": phase1["preferred_channel"],
             "invite_channel": channel,
@@ -341,6 +349,9 @@ def persist_health_onboarding(
     vault = build_vault_payload(submission, invite_meta)
     health.save_profile(profile)
     health.save_vault(vault, secret=secret)
+    wearables_seed = submission.get("_wearables")
+    if isinstance(wearables_seed, dict) and wearables_seed:
+        health.apply_wearables_seed(wearables_seed, secret=secret)
     write_health_workspace_assets(workspace, profile)
     pending = workspace / ".health_chat_onboarding"
     if pending.exists():

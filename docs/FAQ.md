@@ -6,9 +6,9 @@ Common questions about Healthclaw.
 
 ### Is my data sent anywhere?
 
-**Local setup (Ollama + Gemma):** No. All conversations stay on your machine. Your data never leaves your home.
+**Local setup (Ollama + Gemma):** Healthclaw keeps prompts, memory files, and conversation state on infrastructure you control. Nothing is sent to a third-party model provider.
 
-**Cloud API setup:** Your conversations are sent to the AI provider you choose (OpenRouter, Anthropic, OpenAI, etc.). Check their privacy policies. We don't store or log your conversation content.
+**Cloud API setup:** The prompts needed to answer are sent to the provider you choose (OpenRouter, Anthropic, OpenAI, MiniMax, and others your config supports). Check that provider's privacy policy before using it.
 
 ### How does family isolation work?
 

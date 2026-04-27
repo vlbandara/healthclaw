@@ -12,6 +12,7 @@ from arq.connections import RedisSettings
 from nanobot.health.api import (
     _apply_setup_channel_config,
     _build_setup_spawn_env,
+    _submission_with_wearables_seed,
     _configure_logging,
     _load_health_instance_config_template,
     _setup_status_payload,
@@ -59,6 +60,11 @@ async def spawn_instance_job(ctx: dict[str, Any], setup_token: str) -> dict[str,
         phase1 = profile.get("phase1") or {}
         phase2 = profile.get("phase2") or {}
         submission = {"phase1": dict(phase1), "phase2": dict(phase2)}
+    submission = _submission_with_wearables_seed(
+        submission,
+        health=health,
+        secret=health_secret,
+    )
 
     payload = _setup_status_payload(
         health,

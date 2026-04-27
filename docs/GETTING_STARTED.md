@@ -2,6 +2,8 @@
 
 This guide walks you through setting up Healthclaw for the first time. We'll cover both the **local (private)** path using Ollama + Gemma, and the **cloud API** path.
 
+Healthclaw is the public product name for this fork. In v0.2, some runtime identifiers still use `nanobot`, including the CLI command, workspace path, and `NANOBOT_*` environment variables.
+
 ## Choose Your Path
 
 | | Local + Private (Recommended) | Cloud API |
@@ -111,8 +113,8 @@ cp .env.example .env
 3. Add to `.env`:
    ```
    NANOBOT_AGENTS__DEFAULTS__PROVIDER=openrouter
-   NANOBOT_AGENTS__DEFAULTS__MODEL=anthropic/claude-opus-4-5
-   MINIMAX_API_KEY=sk-or-v1-your-key-here
+   NANOBOT_AGENTS__DEFAULTS__MODEL=openai/gpt-4o-mini
+   OPENROUTER_API_KEY=sk-or-v1-your-key-here
    ```
 
 Or use other providers directly:
@@ -138,6 +140,8 @@ As in Option A, get a Telegram bot token from @BotFather and add it to `.env`.
 ```bash
 docker compose --env-file .env up -d --build postgres redis orchestrator worker
 ```
+
+Open the onboarding surface at `http://localhost:18080`.
 
 ---
 

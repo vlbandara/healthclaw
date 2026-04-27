@@ -41,11 +41,21 @@ from nanobot.health.hosted import (
     validate_provider_credentials,
     validate_telegram_bot_token,
 )
+from nanobot.health.openwearables import (
+    OpenWearablesClientConfig,
+    WearableSnapshot,
+    ensure_openwearables_user,
+    openwearables_enabled,
+    refresh_wearables_connections,
+    start_wearable_authorization,
+    sync_wearable_snapshot,
+)
 from nanobot.health.registry import HealthRegistry
 from nanobot.health.spawner import HealthInstanceSpawner
 from nanobot.health.storage import (
     HealthWorkspace,
     get_health_vault_secret,
+    get_onboarding_base_url,
     normalize_clock_time,
     validate_health_timezone,
 )
@@ -154,6 +164,14 @@ class ProviderSetupSubmission(BaseModel):
 
 class TelegramSetupSubmission(BaseModel):
     bot_token: str = Field(min_length=1)
+
+
+class WearablesConnectSubmission(BaseModel):
+    provider: str = Field(min_length=1)
+
+
+class WearablesSyncSubmission(BaseModel):
+    provider: str = ""
 
 
 class WebChatMessage(BaseModel):
@@ -436,6 +454,57 @@ def _connected_setup_channels(setup_payload: dict[str, Any]) -> list[str]:
     ]
 
 
+def _wearables_status_payload(
+    health: HealthWorkspace,
+    *,
+    secret: str,
+) -> dict[str, Any]:
+    setup = health.load_setup() or {}
+    wearables = dict(setup.get("wearables") or {})
+    snapshot = WearableSnapshot.from_dict(health.load_wearables_cache(secret=secret) or {})
+    identity = health.load_openwearables_identity(secret=secret)
+    config = OpenWearablesClientConfig.from_env()
+    wearables["configured"] = bool(config and openwearables_enabled())
+    wearables["has_api_key"] = bool(config and config.api_key)
+    wearables["base_url"] = config.api_url if config else ""
+    wearables["user_linked"] = bool(identity.get("openwearables_user_id"))
+    wearables["snapshot_available"] = snapshot is not None
+    wearables["snapshot"] = snapshot.to_dict() if snapshot else {}
+    return wearables
+
+
+def _wearables_return_url(setup_token: str, *, provider: str = "") -> str:
+    query = f"?provider={provider}" if provider else ""
+    return f"{get_onboarding_base_url()}/api/setup/{setup_token}/wearables/callback{query}"
+
+
+def _submission_with_wearables_seed(
+    submission: dict[str, Any],
+    *,
+    health: HealthWorkspace,
+    secret: str,
+) -> dict[str, Any]:
+    payload = json.loads(json.dumps(submission))
+    payload["_wearables"] = {
+        "enabled": bool((_wearables_status_payload(health, secret=secret) or {}).get("enabled")),
+        "preferred_providers": list(
+            (
+                health.load_profile() or {}
+            ).get("wearables", {}).get("preferred_providers")
+            or (health.load_setup() or {}).get("wearables", {}).get("requested_providers")
+            or []
+        ),
+        "use_for_coaching": bool(
+            (health.load_profile() or {}).get("wearables", {}).get("use_for_coaching", True)
+        ),
+        "connected_providers": list((health.load_setup() or {}).get("wearables", {}).get("connected_providers") or []),
+        "snapshot": health.load_wearables_cache(secret=secret) or {},
+        "openwearables_user_id": health.load_openwearables_identity(secret=secret).get("openwearables_user_id", ""),
+        "external_user_id": health.load_openwearables_identity(secret=secret).get("external_user_id", ""),
+    }
+    return payload
+
+
 def _whatsapp_qr_svg_data_uri(qr_value: str) -> str:
     raw = str(qr_value or "").strip()
     if not raw:
@@ -487,6 +556,17 @@ def _build_setup_spawn_env(
         "GROQ_API_KEY": os.environ.get("GROQ_API_KEY", "").strip(),
         "HEALTH_VAULT_KEY": os.environ.get("HEALTH_VAULT_KEY", "").strip() or health_secret,
     }
+    for key in (
+        "OPENWEARABLES_ENABLED",
+        "OPENWEARABLES_API_URL",
+        "OPENWEARABLES_API_KEY",
+        "OPENWEARABLES_TIMEOUT_SECONDS",
+        "OPENWEARABLES_SYNC_WINDOW_DAYS",
+        "OPENWEARABLES_STALE_AFTER_HOURS",
+    ):
+        value = os.environ.get(key, "").strip()
+        if value:
+            env[key] = value
     if (payload.get("channels", {}).get("telegram") or {}).get("connected") and telegram_token:
         env["TELEGRAM_BOT_TOKEN"] = telegram_token
     if (payload.get("channels", {}).get("whatsapp") or {}).get("connected"):
@@ -572,11 +652,13 @@ def _setup_status_payload(
     links = _current_channel_links(health, fallback_links=fallback_links, bridge_snapshot=bridge_snapshot)
     provider_ready = bool(provider.get("validated_at") or os.environ.get("MINIMAX_API_KEY", "").strip())
     has_connected_channel = any(bool(item.get("connected")) for item in channels.values() if isinstance(item, dict))
+    wearables = _wearables_status_payload(health, secret=secret)
     return {
         "token": setup.get("token"),
         "state": setup.get("state"),
         "provider": provider,
         "channels": channels,
+        "wearables": wearables,
         "profile": health.load_profile_draft_submission(secret=secret) or {},
         "channelLinks": links,
         "activationReady": bool(provider_ready and has_connected_channel),
@@ -1065,6 +1147,119 @@ def create_app() -> FastAPI:
         )
         return JSONResponse(payload)
 
+    @app.get("/api/setup/{setup_token}/wearables/providers")
+    async def setup_wearables_providers(setup_token: str) -> JSONResponse:
+        health = _health_for_setup_token(app, setup_token)
+        setup = health.validate_setup_token(setup_token)
+        if not setup:
+            raise HTTPException(status_code=404, detail="Setup session not found or expired.")
+        if not openwearables_enabled():
+            return JSONResponse({"status": "disabled", "providers": [], "wearables": _wearables_status_payload(health, secret=app.state.health_secret)})
+        try:
+            wearables = await refresh_wearables_connections(health, secret=app.state.health_secret)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Unable to load wearable providers: {exc}") from exc
+        return JSONResponse({"status": "ok", "providers": wearables.get("available_providers", []), "wearables": _wearables_status_payload(health, secret=app.state.health_secret)})
+
+    @app.post("/api/setup/{setup_token}/wearables/connect")
+    async def setup_wearables_connect(setup_token: str, submission: WearablesConnectSubmission) -> JSONResponse:
+        health = _health_for_setup_token(app, setup_token)
+        setup = health.validate_setup_token(setup_token)
+        if not setup:
+            raise HTTPException(status_code=404, detail="Setup session not found or expired.")
+        if not openwearables_enabled():
+            raise HTTPException(status_code=503, detail="Open Wearables is not configured on this Healthclaw instance.")
+        profile_submission = health.load_profile_draft_submission(secret=app.state.health_secret) or {}
+        setup_secrets = health.load_setup_secrets(secret=app.state.health_secret)
+        email = str((setup_secrets.get("profile_identity") or {}).get("email") or "").strip()
+        display_name = ""
+        try:
+            record = await app.state.registry.get_by_setup_token(setup_token)
+            if record:
+                display_name = str(record.name or "").strip()
+        except Exception:
+            display_name = ""
+        if not display_name:
+            display_name = str((profile_submission.get("phase1") or {}).get("full_name") or "").strip()
+        try:
+            authorization = await start_wearable_authorization(
+                health,
+                provider=submission.provider,
+                external_user_id=setup_token,
+                redirect_uri=_wearables_return_url(setup_token, provider=submission.provider),
+                email=email,
+                display_name=display_name,
+                secret=app.state.health_secret,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Unable to start wearable connection: {exc}") from exc
+        return JSONResponse(
+            {
+                "status": "ok",
+                "provider": submission.provider.strip().lower(),
+                "authorizationUrl": authorization.get("authorization_url", ""),
+                "state": authorization.get("state", ""),
+                "wearables": _wearables_status_payload(health, secret=app.state.health_secret),
+            }
+        )
+
+    @app.get("/api/setup/{setup_token}/wearables/status")
+    async def setup_wearables_status(setup_token: str) -> JSONResponse:
+        health = _health_for_setup_token(app, setup_token)
+        setup = health.validate_setup_token(setup_token)
+        if not setup:
+            raise HTTPException(status_code=404, detail="Setup session not found or expired.")
+        if openwearables_enabled():
+            try:
+                await refresh_wearables_connections(health, secret=app.state.health_secret)
+            except Exception:
+                pass
+        return JSONResponse({"status": "ok", "wearables": _wearables_status_payload(health, secret=app.state.health_secret)})
+
+    @app.post("/api/setup/{setup_token}/wearables/sync")
+    async def setup_wearables_sync(setup_token: str, submission: WearablesSyncSubmission) -> JSONResponse:
+        health = _health_for_setup_token(app, setup_token)
+        setup = health.validate_setup_token(setup_token)
+        if not setup:
+            raise HTTPException(status_code=404, detail="Setup session not found or expired.")
+        if not openwearables_enabled():
+            raise HTTPException(status_code=503, detail="Open Wearables is not configured on this Healthclaw instance.")
+        try:
+            snapshot = await sync_wearable_snapshot(
+                health,
+                provider=submission.provider.strip().lower() or None,
+                secret=app.state.health_secret,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Unable to sync wearable data: {exc}") from exc
+        return JSONResponse(
+            {
+                "status": "ok",
+                "wearables": _wearables_status_payload(health, secret=app.state.health_secret),
+                "snapshot": snapshot.to_dict(),
+            }
+        )
+
+    @app.get("/api/setup/{setup_token}/wearables/callback")
+    async def setup_wearables_callback(setup_token: str) -> HTMLResponse:
+        health = _health_for_setup_token(app, setup_token)
+        setup = health.validate_setup_token(setup_token)
+        if not setup:
+            raise HTTPException(status_code=404, detail="Setup session not found or expired.")
+        if openwearables_enabled():
+            try:
+                await refresh_wearables_connections(health, secret=app.state.health_secret)
+            except Exception:
+                pass
+        return HTMLResponse(
+            '<!doctype html><html><head><meta http-equiv="refresh" content="0; url=/setup/%s" /></head><body>Returning to setup… <a href="/setup/%s">Continue</a></body></html>'
+            % (setup_token, setup_token)
+        )
+
     @app.post("/api/setup/{setup_token}/provider")
     async def setup_provider(setup_token: str, submission: ProviderSetupSubmission) -> JSONResponse:
         health = _health_for_setup_token(app, setup_token)
@@ -1182,6 +1377,23 @@ def create_app() -> FastAPI:
         submission = health.load_profile_draft_submission(secret=app.state.health_secret)
         if not submission:
             submission = _default_onboarding_submission(setup_payload=payload)
+        if openwearables_enabled():
+            try:
+                await refresh_wearables_connections(health, secret=app.state.health_secret)
+                wearables_state = _wearables_status_payload(health, secret=app.state.health_secret)
+                if wearables_state.get("user_linked") and wearables_state.get("connected_providers") and not wearables_state.get("snapshot_available"):
+                    await sync_wearable_snapshot(health, secret=app.state.health_secret)
+            except Exception as exc:
+                activation_warnings = [f"Wearable sync skipped during activation: {exc}"]
+            else:
+                activation_warnings = []
+        else:
+            activation_warnings = []
+        submission = _submission_with_wearables_seed(
+            submission,
+            health=health,
+            secret=app.state.health_secret,
+        )
 
         telegram_token = (
             health.load_setup_secrets(secret=app.state.health_secret)
@@ -1242,7 +1454,7 @@ def create_app() -> FastAPI:
         except Exception:
             pass
         spawn = None
-        warnings: list[str] = []
+        warnings: list[str] = list(activation_warnings)
         if not os.environ.get("MINIMAX_API_KEY", "").strip():
             warnings.append("MINIMAX_API_KEY is not set; the coach may not be able to reply.")
         try:
