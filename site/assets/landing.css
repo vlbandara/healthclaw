@@ -5,6 +5,7 @@
   font-family: var(--nh-font-sans);
   background:
     radial-gradient(circle at 15% 20%, var(--nh-color-glow), transparent 40%),
+    radial-gradient(circle at 70% 28%, rgba(201, 227, 208, 0.24), transparent 26%),
     linear-gradient(180deg, var(--nh-color-bg-top) 0%, var(--nh-color-bg-bottom) 100%);
   color: var(--nh-color-ink);
 }
@@ -342,6 +343,25 @@
 
 .landing-cta-card h2 {
   margin: 0 0 var(--nh-space-sm);
+}
+
+.product-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nh-space-sm);
+  margin-top: var(--nh-space-md);
+}
+
+.product-link {
+  color: var(--nh-color-accent);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(61, 123, 95, 0.28);
+  padding-bottom: 2px;
+}
+
+.product-link:hover {
+  border-color: var(--nh-color-accent);
 }
 
 .product-points {

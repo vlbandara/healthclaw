@@ -1,0 +1,26 @@
+/* Healthclaw design tokens — shared across landing, setup, onboard, chat */
+:root {
+  --nh-font-sans: "Inter", "Avenir Next", "Helvetica Neue", "system-ui", "sans-serif";
+  --nh-color-bg-top: #f6efe4;
+  --nh-color-bg-bottom: #f4eee4;
+  --nh-color-ink: #22312a;
+  --nh-color-muted: #5d6f66;
+  --nh-color-accent: #3d7b5f;
+  --nh-color-accent-soft: rgba(61, 123, 95, 0.12);
+  --nh-color-warm: #a96d33;
+  --nh-color-night: #243038;
+  --nh-color-night-muted: #b4c0c5;
+  --nh-color-card: rgba(255, 251, 244, 0.72);
+  --nh-color-glow: rgba(226, 188, 114, 0.2);
+  --nh-radius-card: 28px;
+  --nh-radius-pill: 9999px;
+  --nh-radius-input: 16px;
+  --nh-shadow-card: 0 28px 60px -28px rgba(78, 75, 56, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  --nh-space-xs: 8px;
+  --nh-space-sm: 16px;
+  --nh-space-md: 24px;
+  --nh-space-lg: 32px;
+  --nh-text-eyebrow: 0.8rem;
+  --nh-text-lede: 1.1rem;
+  --nh-max-read: 760px;
+}
