@@ -81,13 +81,6 @@ That makes Healthclaw a better fit when you want a companion that feels delibera
 | Domain focus | General-purpose personal assistant | General-purpose personal agent | Wellbeing check-ins, companion conversations, and family-style tenancy |
 | Runtime identity | `openclaw` brand and runtime | `nanobot` brand and runtime | `Healthclaw` brand with `nanobot` runtime compatibility in v0.2 |
 
-## Why People Visit This Repo
-
-- **Understand the product quickly**: public GitHub Pages product page with the companion story and differentiation
-- **Try the release quickly**: local-first path with Docker and Ollama
-- **Evaluate the architecture**: public docs for setup, self-hosting, memory, and customization
-- **Fork or contribute**: community files, CI, and compatibility notes are already in place
-
 ## Product Page
 
 The repo now includes a static GitHub Pages site in [`site/`](/Users/vinodhlahiru/Documents/Repos/nanobot/site/index.html) so visitors can understand Healthclaw without entering the live onboarding flow.
