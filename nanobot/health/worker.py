@@ -12,10 +12,10 @@ from arq.connections import RedisSettings
 from nanobot.health.api import (
     _apply_setup_channel_config,
     _build_setup_spawn_env,
-    _submission_with_wearables_seed,
     _configure_logging,
     _load_health_instance_config_template,
     _setup_status_payload,
+    _submission_with_wearables_seed,
 )
 from nanobot.health.bootstrap import persist_health_onboarding
 from nanobot.health.metrics import spawn_attempts, spawn_failures, spawn_success

@@ -44,7 +44,6 @@ from nanobot.health.hosted import (
 from nanobot.health.openwearables import (
     OpenWearablesClientConfig,
     WearableSnapshot,
-    ensure_openwearables_user,
     openwearables_enabled,
     refresh_wearables_connections,
     start_wearable_authorization,
