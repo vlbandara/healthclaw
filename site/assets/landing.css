@@ -19,8 +19,8 @@
   padding: var(--nh-space-md) var(--nh-space-lg);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   background: linear-gradient(180deg, rgba(247, 243, 234, 0.95), transparent);
-  pointer-events: none;
 }
 
 .landing-nav__brand {
@@ -29,6 +29,35 @@
   font-size: var(--nh-text-eyebrow);
   color: var(--nh-color-warm);
   font-weight: 600;
+}
+
+.landing-nav__github {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--nh-color-ink);
+  background: rgba(255, 251, 244, 0.6);
+  border: 1px solid rgba(61, 123, 95, 0.16);
+  box-shadow: 0 12px 28px rgba(78, 75, 56, 0.12);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.landing-nav__github:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(78, 75, 56, 0.18);
+  background: rgba(255, 251, 244, 0.78);
+}
+
+.landing-nav__github svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
 }
 
 /* Hero */
