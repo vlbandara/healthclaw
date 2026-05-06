@@ -190,5 +190,55 @@ class TurnExecutor:
         session.messages.append(build_assistant_message(final_text))
         await self._deps.session_repo.save(tenant_id, session)
 
+        # Auto-trim: prevent unbounded session growth.
+        await self._maybe_trim_session(tenant_id, session)
+
         return OutboundMessage(channel=message.channel, chat_id=message.chat_id, content=final_text, reply_to=None)
+
+    async def _maybe_trim_session(self, tenant_id: str, session: "Session") -> None:
+        """Trim a session that has grown past the configured limit.
+
+        Dropped messages are summarised into the tenant's MEMORY document so
+        that important context isn't permanently lost — just compacted.
+        The summary is intentionally lightweight (no extra LLM call):
+        we extract the last assistant turn from the dropped range as a
+        one-line digest.  A proper Dream-style consolidation (which calls
+        the LLM to summarise) runs separately via the cron worker.
+        """
+        cfg = self._deps.config.store
+        max_msgs: int = getattr(cfg, "session_max_messages", 200)
+        trim_to: int  = getattr(cfg, "session_trim_to", 100)
+
+        if len(session.messages) <= max_msgs:
+            return
+
+        # Identify messages that will be dropped.
+        drop_count = len(session.messages) - trim_to
+        dropped = session.messages[:drop_count]
+
+        # Build a compact digest of the dropped range.
+        assistant_snippets = [
+            m["content"][:120]
+            for m in dropped
+            if m.get("role") == "assistant" and isinstance(m.get("content"), str)
+        ]
+        if assistant_snippets:
+            digest = (
+                f"[Auto-trimmed {drop_count} messages — assistant highlights: "
+                + " | ".join(assistant_snippets[-3:])  # last 3 assistant turns
+                + "]"
+            )
+            try:
+                existing = await self._deps.memory_repo.get_document(tenant_id, "MEMORY") or ""
+                updated = (existing.strip() + "\n\n" + digest).strip()
+                await self._deps.memory_repo.save_document(tenant_id, "MEMORY", updated)
+            except Exception:
+                logger.warning("session auto-trim: could not write MEMORY digest for tenant={}", tenant_id)
+
+        session.retain_recent_legal_suffix(trim_to)
+        await self._deps.session_repo.save(tenant_id, session)
+        logger.info(
+            "session auto-trimmed tenant={} key={} dropped={} retained={}",
+            tenant_id, session.key, drop_count, len(session.messages),
+        )
 

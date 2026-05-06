@@ -239,6 +239,30 @@ class StoreConfig(Base):
         validation_alias=AliasChoices("mem0", "mem0Config", "mem0_config"),
         description="Optional mem0 Memory.from_config(...) dictionary for semantic memory.",
     )
+    # Session management
+    session_max_messages: int = Field(
+        default=200,
+        ge=20,
+        validation_alias=AliasChoices("sessionMaxMessages", "session_max_messages"),
+        description="Trim session history when it exceeds this many messages.",
+    )
+    session_trim_to: int = Field(
+        default=100,
+        ge=10,
+        validation_alias=AliasChoices("sessionTrimTo", "session_trim_to"),
+        description="Number of recent messages to retain after trimming.",
+    )
+    # Postgres connection pool
+    pg_pool_min: int = Field(
+        default=2,
+        ge=1,
+        validation_alias=AliasChoices("pgPoolMin", "pg_pool_min"),
+    )
+    pg_pool_max: int = Field(
+        default=10,
+        ge=2,
+        validation_alias=AliasChoices("pgPoolMax", "pg_pool_max"),
+    )
 
 
 class Config(BaseSettings):

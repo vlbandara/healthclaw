@@ -59,6 +59,35 @@
   fill: currentColor;
 }
 
+.landing-nav__login {
+  font-size: 0.875rem;
+  color: var(--nh-color-muted);
+  text-decoration: none;
+  padding: 7px 16px;
+  border-radius: var(--nh-radius-pill);
+  transition: color 0.2s;
+}
+
+.landing-nav__login:hover {
+  color: var(--nh-color-ink);
+}
+
+.landing-nav__signup {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #08080a;
+  text-decoration: none;
+  padding: 8px 18px;
+  background: var(--nh-color-accent);
+  border-radius: var(--nh-radius-pill);
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.landing-nav__signup:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
 /* Hero */
 .story-hero {
   min-height: 100vh;

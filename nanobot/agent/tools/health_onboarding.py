@@ -56,7 +56,7 @@ class CompleteOnboardingTool(Tool):
         )
 
     async def execute(self, submission_json: str, **kwargs: Any) -> str:
-        from nanobot.health.api import OnboardingSubmission
+        from nanobot.health.models import OnboardingSubmission
 
         try:
             raw = json.loads(submission_json)

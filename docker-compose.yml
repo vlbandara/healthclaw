@@ -1,46 +1,9 @@
 name: Healthclaw
 
-# Shared configuration template for all Healthclaw services
-x-common-config: &common-config
-  # Build from the Dockerfile in the project root
-  build:
-    context: .
-    dockerfile: Dockerfile
-  # Mount the nanobot state directory for persistent data
-  volumes:
-    - ${NANOBOT_STATE_DIR:-~/.nanobot}:/home/nanobot/.nanobot
-  environment: &common-env
-    # AI Provider Configuration
-    # For local/private: use Ollama (set OLLAMA_API_BASE)
-    # For cloud: set MINIMAX_API_KEY or other provider keys
-    MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-    OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-    GROQ_API_KEY: ${GROQ_API_KEY:-}
-    # Health vault encryption key (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-    HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
-    HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
-    # Telegram bot configuration
-    HEALTH_TELEGRAM_BOT_URL: ${HEALTH_TELEGRAM_BOT_URL:-}
-    # WhatsApp bridge for WhatsApp channel support
-    HEALTH_WHATSAPP_CHAT_URL: ${HEALTH_WHATSAPP_CHAT_URL:-}
-    HEALTH_WHATSAPP_BRIDGE_URL: ${HEALTH_WHATSAPP_BRIDGE_URL:-ws://whatsapp-bridge:3001}
-    WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
-    # Deployment metadata (for self-hosting)
-    APP_RELEASE: ${APP_RELEASE:-}
-    APP_DEPLOYED_AT: ${APP_DEPLOYED_AT:-}
-  # Security: drop all capabilities, add only what's needed
-  cap_drop:
-    - ALL
-  cap_add:
-    - SYS_ADMIN
-  security_opt:
-    - apparmor=unconfined
-    - seccomp=unconfined
-
 services:
   redis:
     image: redis:7-alpine
-    container_name: Healthclaw-redis
+    container_name: healthclaw-redis
     restart: unless-stopped
     logging:
       driver: json-file
@@ -49,12 +12,12 @@ services:
         max-file: "3"
 
   postgres:
-    image: postgres:16-alpine
-    container_name: Healthclaw-postgres
+    image: pgvector/pgvector:pg16
+    container_name: healthclaw-postgres
     environment:
-      POSTGRES_DB: nanohealth
-      POSTGRES_USER: nanohealth
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nanohealth}
+      POSTGRES_DB: healthclaw
+      POSTGRES_USER: healthclaw
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-healthclaw}
     volumes:
       - pg_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -64,33 +27,37 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  orchestrator:
-    <<: *common-config
-    image: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-Healthclaw-orchestrator:latest}
-    container_name: Healthclaw-orchestrator
-    depends_on:
-      - postgres
-      - redis
-    user: "0:0"
-    cap_add:
-      - SYS_ADMIN
-      - DAC_OVERRIDE
-    entrypoint: ["python", "-m", "uvicorn"]
-    command: ["nanobot.health.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
-    volumes:
-      - ${NANOBOT_STATE_DIR:-~/.nanobot}:/home/nanobot/.nanobot
-      - /var/run/docker.sock:/var/run/docker.sock
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NANOBOT_BUILD_BRIDGE: "0"
+    container_name: healthclaw-gateway
+    command: ["serve", "--host", "0.0.0.0", "--port", "8080"]
     environment:
-      <<: *common-env
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
-      HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
-      NANOBOT_WORKSPACE: /home/nanobot/.nanobot/workspace
-      NANOBOT_HEALTH_INSTANCE_IMAGE: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-Healthclaw-orchestrator:latest}
-      NANOBOT_HEALTH_REGISTRY_URL: ${NANOBOT_HEALTH_REGISTRY_URL:-postgresql://nanohealth:${POSTGRES_PASSWORD:-nanohealth}@postgres:5432/nanohealth}
-      ARQ_REDIS_URL: ${ARQ_REDIS_URL:-redis://redis:6379/0}
+      NANOBOT_STORE__DATABASE_URL: postgresql://healthclaw:${POSTGRES_PASSWORD:-healthclaw}@postgres:5432/healthclaw
+      NANOBOT_STORE__REDIS_URL: redis://redis:6379/0
+      ARQ_REDIS_URL: redis://redis:6379/0
+      NANOBOT_API_KEY: ${NANOBOT_API_KEY:-}
+      NANOBOT_ONBOARDING_TOKEN_SECRET: ${NANOBOT_ONBOARDING_TOKEN_SECRET:-dev-secret-change-me}
+      NANOBOT_SECURE_COOKIES: ${NANOBOT_SECURE_COOKIES:-0}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      HEALTHCLAW_SIGNUP_URL: ${HEALTHCLAW_SIGNUP_URL:-http://localhost:8080/signup}
+      NANOBOT_PROVIDERS__OPENROUTER__API_KEY: ${OPENROUTER_API_KEY:-}
+      NANOBOT_PROVIDERS__MINIMAX__API_KEY: ${MINIMAX_API_KEY:-}
+      NANOBOT_AGENTS__DEFAULTS__MODEL: ${NANOBOT_MODEL:-openai/gpt-4o-mini}
+      NANOBOT_WORKSPACES_ROOT: /var/lib/healthclaw/workspaces
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+    volumes:
+      - workspaces:/var/lib/healthclaw/workspaces
     ports:
-      - "${HEALTH_HTTP_PORT:-8080}:8080"
+      - "${HTTP_PORT:-8080}:8080"
+    depends_on:
+      - redis
+      - postgres
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/healthz || exit 1"]
@@ -103,16 +70,78 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NANOBOT_BUILD_BRIDGE: "0"
+    # Scale horizontally: docker compose up --scale worker=3
+    # Each replica picks jobs from the shared Redis queue.
+    # Cron is protected by a distributed lock — only one worker fires at a time.
+    command: ["worker"]
+    environment:
+      NANOBOT_STORE__DATABASE_URL: postgresql://healthclaw:${POSTGRES_PASSWORD:-healthclaw}@postgres:5432/healthclaw
+      NANOBOT_STORE__REDIS_URL: redis://redis:6379/0
+      ARQ_REDIS_URL: redis://redis:6379/0
+      NANOBOT_PROVIDERS__OPENROUTER__API_KEY: ${OPENROUTER_API_KEY:-}
+      NANOBOT_PROVIDERS__MINIMAX__API_KEY: ${MINIMAX_API_KEY:-}
+      NANOBOT_AGENTS__DEFAULTS__MODEL: ${NANOBOT_MODEL:-openai/gpt-4o-mini}
+      NANOBOT_WORKSPACES_ROOT: /var/lib/healthclaw/workspaces
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+      # Session memory management
+      NANOBOT_STORE__SESSION_MAX_MESSAGES: ${SESSION_MAX_MESSAGES:-200}
+      NANOBOT_STORE__SESSION_TRIM_TO: ${SESSION_TRIM_TO:-100}
+      # Connection pool per worker — tune based on Postgres max_connections / worker count
+      NANOBOT_STORE__PG_POOL_MIN: ${PG_POOL_MIN:-2}
+      NANOBOT_STORE__PG_POOL_MAX: ${PG_POOL_MAX:-8}
+    volumes:
+      - workspaces:/var/lib/healthclaw/workspaces
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  telegram-ingress:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NANOBOT_BUILD_BRIDGE: "0"
+    container_name: healthclaw-telegram
+    entrypoint: ["python"]
+    command: ["-m", "nanobot.gateway.telegram_ingress"]
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      NANOBOT_GATEWAY_URL: http://gateway:8080
+      NANOBOT_API_KEY: ${NANOBOT_API_KEY:-}
+      HEALTHCLAW_SIGNUP_URL: ${HEALTHCLAW_SIGNUP_URL:-http://localhost:8080/signup}
+    depends_on:
+      - gateway
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   caddy:
     image: caddy:2.9-alpine
-    container_name: Healthclaw-caddy
+    container_name: healthclaw-caddy
     depends_on:
-      - orchestrator
+      - gateway
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
       - "${CADDY_HTTPS_PORT:-443}:443"
     environment:
-      DOMAIN: ${DOMAIN}
+      DOMAIN: ${DOMAIN:-localhost}
     volumes:
       - ./deploy/health/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -124,34 +153,8 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  worker:
-    <<: *common-config
-    container_name: Healthclaw-worker
-    depends_on:
-      - postgres
-      - redis
-    entrypoint: ["python", "-m", "nanobot.health.worker"]
-    volumes:
-      - ${NANOBOT_STATE_DIR:-~/.nanobot}:/home/nanobot/.nanobot
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      <<: *common-env
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
-      HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
-      NANOBOT_WORKSPACE: /home/nanobot/.nanobot/workspace
-      NANOBOT_HEALTH_INSTANCE_IMAGE: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-Healthclaw-orchestrator:latest}
-      NANOBOT_HEALTH_REGISTRY_URL: ${NANOBOT_HEALTH_REGISTRY_URL:-postgresql://nanohealth:${POSTGRES_PASSWORD:-nanohealth}@postgres:5432/nanohealth}
-      ARQ_REDIS_URL: ${ARQ_REDIS_URL:-redis://redis:6379/0}
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-
 volumes:
+  pg_data:
+  workspaces:
   caddy_data:
   caddy_config:
-  pg_data:

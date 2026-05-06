@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Your companion — Healthclaw</title>
+    <link rel="stylesheet" href="/static/tokens.css" />
+    <link rel="stylesheet" href="/static/onboard.css" />
+    <link rel="stylesheet" href="/static/companion.css" />
+    <link rel="stylesheet" href="/static/auth.css" />
+  </head>
+  <body class="account-body">
+    {% from "_companion.html" import companion %}
+
+    <nav class="account-nav">
+      <span class="account-nav__brand">Healthclaw</span>
+      <div class="account-nav__actions">
+        <span class="account-nav__user">{{ user.name }}</span>
+        <a class="account-nav__logout" href="#" id="logout-btn">Sign out</a>
+      </div>
+    </nav>
+
+    <main class="account-main">
+
+      <!-- ── Telegram section ─────────────────────────────────────────────── -->
+      <section class="account-section" id="tg-section">
+        <div class="account-section__header">
+          <h2 class="account-section__title">Connect Telegram</h2>
+          {% if telegram_linked %}
+            <span class="account-section__badge">Linked ✓</span>
+          {% elif bot_username %}
+            <span class="account-section__badge account-section__badge--pending">Ready — say hi</span>
+          {% else %}
+            <span class="account-section__badge account-section__badge--pending">Not set up</span>
+          {% endif %}
+        </div>
+
+        {% if telegram_linked %}
+          <!-- ── Already linked ── -->
+          <div class="channel-linked-row">
+            <span class="channel-linked-row__icon">✅</span>
+            <div class="channel-linked-row__text">
+              <strong>Telegram linked</strong>
+              <span>Chat ID {{ telegram_chat_id }}</span>
+            </div>
+          </div>
+          <p class="lede" style="margin-top:var(--nh-space-sm);">
+            Your companion is active.
+            <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener"
+               style="color:var(--nh-color-accent);font-weight:600;">Open the bot</a>
+            and chat anytime.
+          </p>
+          <div style="margin-top:var(--nh-space-md);">
+            <p class="lede" style="margin-bottom:8px;">Want to link a different Telegram account? Generate a new link:</p>
+            <button class="tg-connect-btn" id="tg-link-btn" type="button">Generate new link</button>
+            <p class="section-status" id="tg-link-status"></p>
+            <div id="tg-link-result" hidden></div>
+          </div>
+
+        {% else %}
+          <!-- ── Not linked yet ── -->
+          <p class="lede">
+            Click the button below to get a one-time link. Open it in your browser —
+            Telegram will open and your account links automatically. The link expires in 15 minutes.
+          </p>
+          <div style="margin-top:var(--nh-space-md);">
+            <button class="tg-connect-btn" id="tg-link-btn" type="button">🔗 Generate Telegram link</button>
+            <p class="section-status" id="tg-link-status"></p>
+            <div id="tg-link-result" hidden></div>
+          </div>
+        {% endif %}
+      </section>
+
+      <!-- ── Companion preferences wizard ──────────────────────────────────── -->
+      <section class="account-section">
+        <div class="account-section__header">
+          <h2 class="account-section__title">Companion preferences</h2>
+        </div>
+        <p class="lede">Tell your companion what to focus on and how to sound. You can refine anytime in chat.</p>
+
+        <form id="prefs-form" class="wizard-layout wizard-layout--story" style="gap:0;">
+          <!-- Progress header -->
+          <div class="wizard-top wizard-top--story" style="margin-bottom:var(--nh-space-md);">
+            <div class="wizard-progress">
+              <p class="wizard-progress__eyebrow" id="wizard-progress-label">Step 1 of 3</p>
+              <div class="step-dots" id="step-dots" aria-hidden="true">
+                <span class="step-dot"></span>
+                <span class="step-dot"></span>
+                <span class="step-dot"></span>
+              </div>
+              <p class="wizard-progress__hint" id="wizard-progress-hint">Choose what you want help with.</p>
+            </div>
+            <div class="onboard-floating-companion onboard-floating-companion--hero" id="onboard-companion-wrap">
+              <div class="story-hero__orb story-hero__orb--onboard" aria-hidden="true"></div>
+              {{ companion('happy', 'companion-wrap--sm') }}
+            </div>
+          </div>
+
+          <div class="card-steps">
+            <!-- Step 1 — focus areas -->
+            <section class="card-step card-step--tap active" data-card="0">
+              <div class="story-scene story-scene--compact">
+                <div class="story-scene__copy">
+                  <p class="scene-kicker">Step one</p>
+                  <h2>What do you want help with first?</h2>
+                  <p class="scene-lede">Pick one or more.</p>
+                  <div class="tap-grid">
+                    <label class="tap-card tap-card--detail"><input type="checkbox" name="care_focus" value="meds" /><strong>Medication</strong><small>Gentle reminders that follow through.</small></label>
+                    <label class="tap-card tap-card--detail"><input type="checkbox" name="care_focus" value="movement" /><strong>Movement</strong><small>Small nudges when energy drops.</small></label>
+                    <label class="tap-card tap-card--detail"><input type="checkbox" name="care_focus" value="stress" /><strong>Stress</strong><small>Steadier check-ins during tense moments.</small></label>
+                    <label class="tap-card tap-card--detail"><input type="checkbox" name="care_focus" value="sleep" /><strong>Sleep</strong><small>Support for winding down and protecting rest.</small></label>
+                    <label class="tap-card tap-card--detail"><input type="checkbox" name="care_focus" value="routine" /><strong>Daily rhythm</strong><small>Light structure for mornings and evenings.</small></label>
+                  </div>
+                </div>
+                <aside class="story-scene__aside story-scene__aside--stack">
+                  <div class="story-preview-stack">
+                    <p class="scene-kicker">Preview</p>
+                    <div class="mock-notification">
+                      <span class="mock-notification__dot"></span>
+                      <div class="mock-notification__body">
+                        <strong id="focus-preview-title">Sleep support</strong>
+                        <span id="focus-preview-body">We can keep evenings softer and give the day a calmer landing.</span>
+                      </div>
+                    </div>
+                    <div class="story-summary"><p id="focus-summary" class="story-summary__line">Start with one thing that matters.</p></div>
+                  </div>
+                </aside>
+              </div>
+            </section>
+
+            <!-- Step 2 — tone -->
+            <section class="card-step card-step--tap" data-card="1">
+              <div class="story-scene story-scene--compact">
+                <div class="story-scene__copy">
+                  <p class="scene-kicker">Step two</p>
+                  <h2>How should I sound?</h2>
+                  <p class="scene-lede">Pick your starting vibe. Change it anytime.</p>
+                  <div class="tap-grid tap-grid--vibe">
+                    <label class="tap-card tap-card--vibe tap-card--detail"><input type="radio" name="tone_style" value="gentle" checked /><strong>Soft</strong><small>Warm, encouraging, low pressure.</small></label>
+                    <label class="tap-card tap-card--vibe tap-card--detail"><input type="radio" name="tone_style" value="direct" /><strong>Clear</strong><small>Short, practical, lightly pushy.</small></label>
+                    <label class="tap-card tap-card--vibe tap-card--detail"><input type="radio" name="tone_style" value="calm" /><strong>Steady</strong><small>Grounded, quiet, and reassuring.</small></label>
+                  </div>
+                  <div class="tap-toggles">
+                    <label class="toggle-row"><input name="morning_check_in" type="checkbox" checked /><span><strong>Start-of-day hello</strong><small>A light touch near the start of your day.</small></span></label>
+                    <label class="toggle-row"><input name="weekly_summary" type="checkbox" checked /><span><strong>Weekly reset</strong><small>A gentle recap of patterns, wins, and misses.</small></span></label>
+                  </div>
+                </div>
+                <aside class="story-scene__aside story-scene__aside--stack">
+                  <div class="story-preview-stack">
+                    <p class="scene-kicker">How it lands</p>
+                    <div class="mock-chat">
+                      <div id="tone-preview-line" class="mock-chat__bubble mock-chat__bubble--them">Morning. Want one small thing to feel easier today?</div>
+                      <div class="mock-chat__bubble mock-chat__bubble--you">Yes, keep it simple.</div>
+                    </div>
+                    <div class="story-summary"><p id="toggle-summary" class="story-summary__line">Morning hello and weekly reset are both on.</p></div>
+                  </div>
+                </aside>
+              </div>
+            </section>
+
+            <!-- Step 3 — personal details -->
+            <section class="card-step card-step--tap" data-card="2">
+              <div class="story-scene story-scene--compact">
+                <div class="story-scene__copy">
+                  <p class="scene-kicker">Final step</p>
+                  <h2>Keep it local</h2>
+                  <p class="scene-lede">Name and location help your companion time reminders right.</p>
+                  <div class="story-form-grid">
+                    <label class="tap-field"><span>Your name</span><input name="full_name" autocomplete="name" placeholder="Alex" value="{{ user.name }}" /></label>
+                    <label class="tap-field"><span>Your location</span><input name="location" autocomplete="address-level2" placeholder="Colombo, Sri Lanka" /></label>
+                    <label class="tap-field">
+                      <span>Your timezone</span>
+                      <input name="timezone" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Asia/Colombo" value="{{ user.timezone }}" />
+                      <small class="field-hint">Detected from your browser. Edit if you travel.</small>
+                    </label>
+                  </div>
+                  <div class="time-pill" id="timezone-pill">Checking your local time…</div>
+                  <p class="tap-disclaimer">Wellbeing support only — not medical or emergency care.</p>
+                </div>
+                <aside class="story-scene__aside story-scene__aside--stack">
+                  <div class="story-preview-stack">
+                    <p class="scene-kicker">Ready to start</p>
+                    <div class="story-summary story-summary--soft">
+                      <p id="final-summary-name" class="story-summary__line">You'll be greeted by name.</p>
+                      <p id="final-summary-location" class="story-summary__line">Timing follows your local day.</p>
+                      <p id="final-summary-timezone" class="story-summary__line">Timezone auto-detected.</p>
+                      <p id="final-summary-style" class="story-summary__line">Tone and focus keep evolving.</p>
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </section>
+          </div>
+
+          <footer class="actions" style="margin-top:var(--nh-space-md);">
+            <button type="button" id="back" class="secondary" style="visibility:hidden;">Back</button>
+            <button type="button" id="next">Continue</button>
+            <button type="submit" id="submit-prefs" hidden>Save preferences</button>
+          </footer>
+          <p id="prefs-status" class="status" role="alert" aria-live="polite"></p>
+        </form>
+
+        <!-- Completion state -->
+        <section id="prefs-completion" class="completion completion--alive" hidden>
+          <div class="completion__companion">{{ companion('celebrating', 'companion-wrap--sm') }}</div>
+          <h2>Preferences saved!</h2>
+          <p class="completion__greeting">
+            Your companion knows what to focus on.
+            {% if bot_username %}
+              Head to <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener"
+                         style="color:var(--nh-color-accent);">@{{ bot_username }}</a> and say hi.
+            {% else %}
+              Connect your Telegram bot above, then start chatting.
+            {% endif %}
+          </p>
+        </section>
+      </section>
+
+    </main>
+
+    <script>
+      window.__HC = {
+        botUsername: "{{ bot_username | default('') }}",
+        telegramLinked: {{ 'true' if telegram_linked else 'false' }},
+        telegramChatId: "{{ telegram_chat_id | default('') }}",
+      };
+    </script>
+    <script src="/static/account.js"></script>
+  </body>
+</html>

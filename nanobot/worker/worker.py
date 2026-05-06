@@ -68,7 +68,13 @@ async def startup(ctx: dict[str, Any]) -> None:
     if not config.store.database_url:
         raise RuntimeError("config.store.database_url is required for platform worker")
 
-    pg_pool_mgr = PostgresPool(PostgresStoreConfig(database_url=config.store.database_url))
+    pg_pool_mgr = PostgresPool(
+        PostgresStoreConfig(
+            database_url=config.store.database_url,
+            min_pool_size=config.store.pg_pool_min,
+            max_pool_size=config.store.pg_pool_max,
+        )
+    )
     await pg_pool_mgr.init()
     lock_mgr = RedisDistributedLock(RedisLockConfig(redis_url=config.store.redis_url))
     ctx["worker"] = WorkerContext(config=config, pg_pool_mgr=pg_pool_mgr, lock_mgr=lock_mgr)
@@ -99,9 +105,12 @@ async def process_turn(
 
     session_repo = PostgresSessionRepository(pool)
     memory_docs = PostgresMemoryRepository(pool)
+    # Only use mem0 when explicitly configured with a non-empty dict.
+    # An empty dict triggers mem0's default in-memory ChromaDB which is NOT
+    # shared between workers and is lost on restart.
     memory_repo = (
         Mem0MemoryRepository(documents=memory_docs, mem0_config=config.store.mem0_config)
-        if config.store.mem0_config is not None
+        if config.store.mem0_config  # falsy empty dict → skip mem0
         else memory_docs
     )
     checkpoint_repo = PostgresCheckpointRepository(pool)
@@ -158,7 +167,26 @@ async def process_turn(
 
 
 async def cron_tick(ctx: dict[str, Any]) -> None:
-    """Run due cron jobs and deliver proactive messages."""
+    """Run due cron jobs and deliver proactive messages.
+
+    Protected by a 55-second distributed lock so that running multiple
+    workers does not cause double-sends.
+    """
+    w: WorkerContext = ctx["worker"]
+
+    # Only one worker should run cron at a time. Skip rather than queue.
+    lock_token = await w.lock_mgr.acquire("cron_tick_global", ttl_s=55, wait_s=0)
+    if not lock_token:
+        logger.debug("cron_tick skipped — another worker holds the lock")
+        return
+
+    try:
+        await _do_cron_tick(ctx)
+    finally:
+        await w.lock_mgr.release("cron_tick_global", lock_token)
+
+
+async def _do_cron_tick(ctx: dict[str, Any]) -> None:
     w: WorkerContext = ctx["worker"]
     config = w.config
     pool = await w.pg_pool_mgr.init()
