@@ -6,6 +6,7 @@ LLM call to decide whether the result warrants notifying the user.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -39,6 +40,26 @@ _EVALUATE_TOOL = [
     }
 ]
 
+
+_SUPPRESSION_RESPONSE_PATTERNS = (
+    re.compile(r"\balready\s+sent\b.*\bnot\s+resending\b", re.IGNORECASE | re.DOTALL),
+    re.compile(r"\balready\s+sent\b.*\bnot\s+doubling\s+up\b", re.IGNORECASE | re.DOTALL),
+    re.compile(r"\balready\s+reached\s+out\b.*\bnot\s+sending\b", re.IGNORECASE | re.DOTALL),
+    re.compile(r"\bnot\s+sending\s+(?:a|another|the)?\s*(?:third|ping|nudge|message)\b", re.IGNORECASE),
+    re.compile(r"\b(?:standing\s+by|holding\s+position)\b.*\b(?:reply|surface|cycle|attempts?)\b", re.IGNORECASE | re.DOTALL),
+    re.compile(r"\b(?:attempts?|nudges?|pings?|check-?ins?)\b.*\benough\b.*\bholding\b", re.IGNORECASE | re.DOTALL),
+)
+
+
+def _looks_like_internal_suppression_response(response: str) -> bool:
+    """Detect no-op background-agent decisions that should never reach users."""
+    text = re.sub(r"<think>.*?</think>", "", str(response or ""), flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return False
+    return any(pattern.search(text) for pattern in _SUPPRESSION_RESPONSE_PATTERNS)
+
+
 async def evaluate_response(
     response: str,
     task_context: str,
@@ -51,6 +72,10 @@ async def evaluate_response(
     ``_decide()``).  Falls back to ``True`` (notify) on any failure so
     that important messages are never silently dropped.
     """
+    if _looks_like_internal_suppression_response(response):
+        logger.info("evaluate_response: suppressing internal no-op background response")
+        return False
+
     try:
         llm_response = await provider.chat_with_retry(
             messages=[

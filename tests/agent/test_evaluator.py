@@ -8,8 +8,10 @@ class DummyProvider(LLMProvider):
     def __init__(self, responses: list[LLMResponse]):
         super().__init__()
         self._responses = list(responses)
+        self.calls = 0
 
     async def chat(self, *args, **kwargs) -> LLMResponse:
+        self.calls += 1
         if self._responses:
             return self._responses.pop(0)
         return LLMResponse(content="", tool_calls=[])
@@ -61,3 +63,22 @@ async def test_no_tool_call_fallback() -> None:
     provider = DummyProvider([LLMResponse(content="I think you should notify", tool_calls=[])])
     result = await evaluate_response("some response", "some task", provider, "m")
     assert result is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response",
+    [
+        "Already sent. Not resending this cycle.",
+        "Already sent at 07:17 — same morning, same cycle. Not doubling up. Standing by for their reply.",
+        "Already reached out twice this morning — 07:17 and 08:48. Not sending a third.",
+        "Three attempts this morning is enough. Holding position.",
+    ],
+)
+async def test_internal_suppression_responses_are_never_notified(response: str) -> None:
+    provider = DummyProvider([_eval_tool_call(True, "would otherwise notify")])
+
+    result = await evaluate_response(response, "send morning check-in", provider, "m")
+
+    assert result is False
+    assert provider.calls == 0
