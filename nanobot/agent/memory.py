@@ -147,6 +147,7 @@ class MemoryStore:
         self._git = GitStore(workspace, tracked_files=[
             "SOUL.md", "USER.md", "memory/MEMORY.md", "memory/INTERESTS.md",
         ])
+        self._relocate_legacy_autonomy_memory_archive()
         self._archive_legacy_autonomy_state()
         self._maybe_migrate_legacy_history()
 
@@ -163,22 +164,39 @@ class MemoryStore:
         except FileNotFoundError:
             return ""
 
+    def _legacy_autonomy_archive_root(self) -> Path:
+        return ensure_dir(self.workspace / ".nanobot_archive" / "legacy_autonomy")
+
+    def _move_to_legacy_autonomy_archive(self, source: Path, prefix: str) -> Path | None:
+        archive_root = self._legacy_autonomy_archive_root()
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        target = archive_root / f"{prefix}-{stamp}"
+        suffix = 2
+        while target.exists():
+            target = archive_root / f"{prefix}-{stamp}-{suffix}"
+            suffix += 1
+        try:
+            shutil.move(str(source), str(target))
+            return target
+        except Exception:
+            logger.exception("Failed to archive legacy autonomy state at {}", source)
+            return None
+
+    def _relocate_legacy_autonomy_memory_archive(self) -> None:
+        legacy_memory_archive = self.memory_dir / "legacy_autonomy"
+        if not legacy_memory_archive.exists():
+            return
+        target = self._move_to_legacy_autonomy_archive(legacy_memory_archive, "memory-legacy-autonomy")
+        if target:
+            logger.info("Relocated legacy autonomy memory archive to {}", target)
+
     def _archive_legacy_autonomy_state(self) -> None:
         legacy_dir = self.workspace / "autonomy"
         if not legacy_dir.exists():
             return
-        archive_root = ensure_dir(self.memory_dir / "legacy_autonomy")
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        target = archive_root / f"autonomy-{stamp}"
-        suffix = 2
-        while target.exists():
-            target = archive_root / f"autonomy-{stamp}-{suffix}"
-            suffix += 1
-        try:
-            shutil.move(str(legacy_dir), str(target))
+        target = self._move_to_legacy_autonomy_archive(legacy_dir, "autonomy")
+        if target:
             logger.info("Archived legacy autonomy state to {}", target)
-        except Exception:
-            logger.exception("Failed to archive legacy autonomy state at {}", legacy_dir)
 
     def _maybe_migrate_legacy_history(self) -> None:
         """One-time upgrade from legacy HISTORY.md to history.jsonl.

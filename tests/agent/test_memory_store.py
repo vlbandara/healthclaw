@@ -70,6 +70,45 @@ class TestMemoryStoreBasicIO:
         assert state["delivery"]["recent_topics"] == ["Trail running"]
 
 
+class TestLegacyAutonomyArchive:
+    def test_archives_legacy_autonomy_outside_memory(self, tmp_path):
+        artifact_dir = tmp_path / "autonomy" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "korean-guitar-learning.md").write_text(
+            "Korean language practice and guitar learning starter",
+            encoding="utf-8",
+        )
+
+        MemoryStore(tmp_path)
+
+        assert not (tmp_path / "autonomy").exists()
+        assert not (tmp_path / "memory" / "legacy_autonomy").exists()
+
+        archives = list((tmp_path / ".nanobot_archive" / "legacy_autonomy").glob("autonomy-*"))
+        assert len(archives) == 1
+        archived_artifact = archives[0] / "artifacts" / "korean-guitar-learning.md"
+        assert archived_artifact.read_text(encoding="utf-8") == (
+            "Korean language practice and guitar learning starter"
+        )
+
+    def test_relocates_existing_legacy_autonomy_archive_outside_memory(self, tmp_path):
+        legacy_archive = tmp_path / "memory" / "legacy_autonomy" / "autonomy-old"
+        legacy_archive.mkdir(parents=True)
+        (legacy_archive / "threads.json").write_text(
+            '{"threads":[{"topic":"guitar learning"}]}',
+            encoding="utf-8",
+        )
+
+        MemoryStore(tmp_path)
+
+        assert not (tmp_path / "memory" / "legacy_autonomy").exists()
+        archives = list(
+            (tmp_path / ".nanobot_archive" / "legacy_autonomy").glob("memory-legacy-autonomy-*")
+        )
+        assert len(archives) == 1
+        assert (archives[0] / "autonomy-old" / "threads.json").exists()
+
+
 class TestHistoryWithCursor:
     def test_append_history_returns_cursor(self, store):
         cursor = store.append_history("event 1")
