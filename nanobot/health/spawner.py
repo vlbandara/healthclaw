@@ -488,11 +488,14 @@ class HealthInstanceSpawner:
         telegram_connected: bool = True,
         extra_env: dict[str, str] | None = None,
         tier: str | None = None,
+        setup_secrets: dict[str, Any] | None = None,
     ) -> SpawnResult:
         """Create/seed a volume and start a gateway container.
 
         - `config_json` is written as `~/.nanobot/config.json` inside the volume workspace.
         - `onboarding_submission` is passed into `persist_health_onboarding` to render SOUL/USER/etc.
+        - `setup_secrets` (optional) is encrypted and written as `setup-secrets.json.enc`; if provided
+          the workspace is also marked active so hosted runtime_overrides work correctly.
         """
         if self._spawn_mode() != "remote":
             self.enforce_capacity()
@@ -545,15 +548,33 @@ class HealthInstanceSpawner:
                 stable_token_hint=user_id,
             )
 
-            # Mark telegram connected in setup.json for hosted overrides, if desired.
-            if telegram_connected:
+            # Seed setup state so hosted runtime_overrides resolve the correct provider.
+            if telegram_connected or setup_secrets:
                 from nanobot.health.storage import HealthWorkspace
 
                 health = HealthWorkspace(workspace)
                 health.create_setup_session()
-                # The setup secrets (provider key, telegram token) are expected to already
-                # be embedded in config_json for the spawned instance; the hosted overrides
-                # are primarily used by the single-workspace hosted setup flow.
+                if setup_secrets:
+                    health.save_setup_secrets(setup_secrets, secret=get_health_vault_secret())
+                    # Persist the actual provider name/model and connected channel state
+                    # into setup.json so runtime_overrides returns the right values.
+                    provider_secret = setup_secrets.get("provider") or {}
+                    telegram_secret = setup_secrets.get("telegram") or {}
+                    setup = health.load_setup() or {}
+                    provider_name = (provider_secret.get("provider") or "").strip()
+                    provider_model = (provider_secret.get("model") or "").strip()
+                    if provider_name or provider_model:
+                        setup_provider = setup.setdefault("provider", {})
+                        if provider_name:
+                            setup_provider["provider"] = provider_name
+                        if provider_model:
+                            setup_provider["model"] = provider_model
+                    if (telegram_secret.get("bot_token") or "").strip():
+                        channels = setup.setdefault("channels", {})
+                        channels.setdefault("telegram", {})["connected"] = True
+                    health.save_setup(setup)
+                    # Mark active so runtime_overrides returns the seeded values.
+                    health.mark_setup_active()
 
             if storage_mode == "bind":
                 self._seed_bind_workspace(

@@ -340,34 +340,35 @@ button:disabled {
   gap: 8px;
   padding: 14px 16px;
   border-radius: 18px;
-  border: 1px solid rgba(32, 48, 40, 0.12);
-  background: rgba(255, 253, 248, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .channel-checklist__title {
   margin: 0;
   font-weight: 650;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .channel-checklist__items {
   margin: 0;
   padding-left: 18px;
-  color: var(--nh-color-muted);
+  color: rgba(255, 255, 255, 0.45);
   display: grid;
   gap: 6px;
 }
 
 .support-details {
   border-radius: 18px;
-  border: 1px solid rgba(32, 48, 40, 0.12);
-  background: rgba(255, 253, 248, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.2);
   padding: 12px 14px;
 }
 
 .support-details summary {
   cursor: pointer;
   font-weight: 650;
-  color: #203028;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .support-details__body {
@@ -409,8 +410,8 @@ button:disabled {
   min-height: 264px;
   padding: 18px;
   border-radius: 20px;
-  border: 1px solid rgba(31, 107, 73, 0.12);
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .whatsapp-qr-frame img {
@@ -444,9 +445,9 @@ button:disabled {
   align-items: flex-start;
   padding: 14px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(31, 107, 73, 0.1);
-  box-shadow: 0 4px 12px rgba(32, 48, 40, 0.03);
+  background: rgba(31, 107, 73, 0.06);
+  border: 1px solid rgba(31, 107, 73, 0.14);
+  box-shadow: none;
 }
 
 .promise-icon {
@@ -817,9 +818,9 @@ button:disabled {
   align-content: start;
   padding: 18px 16px;
   border-radius: 22px;
-  border: 1px solid rgba(31, 107, 73, 0.14);
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 14px 34px rgba(32, 48, 40, 0.06);
+  border: 1px solid rgba(31, 107, 73, 0.18);
+  background: rgba(31, 107, 73, 0.06);
+  box-shadow: none;
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
   user-select: none;
@@ -855,7 +856,8 @@ button:disabled {
 
 .tap-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 18px 42px rgba(32, 48, 40, 0.08);
+  background: rgba(31, 107, 73, 0.1);
+  border-color: rgba(31, 107, 73, 0.28);
 }
 
 .tap-card:active {
@@ -863,9 +865,9 @@ button:disabled {
 }
 
 .tap-card:has(input:checked) {
-  border-color: rgba(31, 107, 73, 0.36);
-  background: linear-gradient(180deg, rgba(31, 107, 73, 0.08), rgba(255, 255, 255, 0.92));
-  box-shadow: 0 18px 44px rgba(32, 48, 40, 0.09);
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.12);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
 }
 
 .tap-card--detail {
@@ -1337,4 +1339,49 @@ button:disabled {
   .onboard-floating-companion--hero {
     justify-self: center;
   }
+
+  .wearable-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .step-progress__label {
+    display: none;
+  }
+}
+
+/* Skip link — reset default button chrome */
+button.skip-link {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--color-muted, #94a3b8);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  border-radius: 0;
+}
+button.skip-link:hover {
+  background: none;
+  box-shadow: none;
+  color: var(--nh-color-ink, #1e293b);
+  transform: none;
+}
+
+/* Username suggestion chips */
+.username-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.username-suggestion {
+  background: color-mix(in srgb, var(--nh-color-accent, #10b981) 10%, transparent);
+  color: var(--nh-color-accent, #10b981);
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.3rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  user-select: all;
 }
