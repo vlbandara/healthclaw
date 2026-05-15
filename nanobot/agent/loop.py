@@ -25,6 +25,11 @@ from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from nanobot.agent.tools.health_onboarding import CompleteOnboardingTool
 from nanobot.agent.tools.health_profile import SetPreferredNameTool, UpdateHealthProfileTool
+from nanobot.agent.tools.message import MessageTool
+from nanobot.agent.tools.registry import ToolRegistry
+from nanobot.agent.tools.search import GlobTool, GrepTool
+from nanobot.agent.tools.shell import ExecTool
+from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.wearables import (
     GetActivitySummaryTool,
     GetBodySummaryTool,
@@ -33,11 +38,6 @@ from nanobot.agent.tools.wearables import (
     ListWearableConnectionsTool,
     SyncWearablesTool,
 )
-from nanobot.agent.tools.message import MessageTool
-from nanobot.agent.tools.registry import ToolRegistry
-from nanobot.agent.tools.search import GlobTool, GrepTool
-from nanobot.agent.tools.shell import ExecTool
-from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus

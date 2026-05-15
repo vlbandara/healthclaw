@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-logger = logging.getLogger(__name__)
-
 from cryptography.fernet import Fernet, InvalidToken
 
 from nanobot.utils.helpers import ensure_dir
+
+logger = logging.getLogger(__name__)
 
 _PROFILE_NAME = "profile.json"
 _VAULT_NAME = "vault.json.enc"

@@ -6,13 +6,13 @@ import logging
 import os
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from nanobot.config.schema import Config
 from nanobot.health.storage import HealthWorkspace, health_distribution_enabled, is_health_workspace
 from nanobot.providers.anonymizing import AnonymizingProvider
 from nanobot.providers.base import GenerationSettings, LLMProvider, LLMResponse
 from nanobot.security.anonymizer import PIIAnonymizer
+
+logger = logging.getLogger(__name__)
 
 
 def _apply_health_runtime_overrides(config: Config, workspace: Path) -> Config:
