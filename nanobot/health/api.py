@@ -469,6 +469,26 @@ def _wearables_status_payload(
     wearables["user_linked"] = bool(identity.get("openwearables_user_id"))
     wearables["snapshot_available"] = snapshot is not None
     wearables["snapshot"] = snapshot.to_dict() if snapshot else {}
+    wearables["featured_providers"] = [
+        {
+            "provider": "apple-health",
+            "name": "Apple Health",
+            "logo": "/static/wearables/apple-health.svg",
+            "blurb": "Sleep, steps, heart rate",
+        },
+        {
+            "provider": "google-fit",
+            "name": "Google Fit / Health Connect",
+            "logo": "/static/wearables/google-fit.svg",
+            "blurb": "Steps, workouts, heart rate",
+        },
+        {
+            "provider": "fitbit",
+            "name": "Fitbit",
+            "logo": "/static/wearables/fitbit.svg",
+            "blurb": "Sleep score, steps, resting HR",
+        },
+    ]
     return wearables
 
 
@@ -519,6 +539,50 @@ def _whatsapp_qr_svg_data_uri(qr_value: str) -> str:
         return f"data:image/svg+xml;base64,{payload}"
     except Exception:
         return ""
+
+
+_PROVIDER_ENV_KEYS: dict[str, str] = {
+    "minimax": "MINIMAX_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "ollama": "OLLAMA_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+
+
+def _apply_setup_provider_config(
+    config_json: dict[str, Any],
+    *,
+    provider_payload: dict[str, Any],
+    api_key: str = "",
+) -> dict[str, Any]:
+    """Overwrite the template provider with the one the user actually chose during setup.
+
+    If api_key is provided it is embedded directly; otherwise an ENV: reference is used
+    as a fallback for deployments where the key is available as an environment variable.
+    """
+    from nanobot.health.hosted import PROVIDER_CHOICES
+
+    provider_name = (provider_payload.get("provider") or "minimax").lower().strip()
+    choice = PROVIDER_CHOICES.get(provider_name, {})
+    model = (provider_payload.get("model") or choice.get("model") or "").strip()
+    api_base = choice.get("api_base", "")
+
+    defaults = config_json.setdefault("agents", {}).setdefault("defaults", {})
+    defaults["provider"] = provider_name
+    if model:
+        defaults["model"] = model
+
+    env_key = _PROVIDER_ENV_KEYS.get(provider_name, f"{provider_name.upper()}_API_KEY")
+    provider_cfg: dict[str, str] = {}
+    if not choice.get("no_key_required"):
+        provider_cfg["apiKey"] = api_key if api_key else f"ENV:{env_key}"
+    if api_base:
+        provider_cfg["apiBase"] = api_base
+
+    config_json.setdefault("providers", {})[provider_name] = provider_cfg
+    return config_json
 
 
 def _apply_setup_channel_config(
@@ -1394,11 +1458,9 @@ def create_app() -> FastAPI:
             secret=app.state.health_secret,
         )
 
-        telegram_token = (
-            health.load_setup_secrets(secret=app.state.health_secret)
-            .get("telegram", {})
-            .get("bot_token")
-        )
+        _setup_secrets = health.load_setup_secrets(secret=app.state.health_secret)
+        telegram_token = _setup_secrets.get("telegram", {}).get("bot_token")
+        provider_api_key = _setup_secrets.get("provider", {}).get("api_key", "").strip()
 
         if os.environ.get("NANOBOT_HEALTH_ASYNC_SPAWN", "").strip().lower() in {"1", "true", "yes", "on"}:
             try:
@@ -1442,9 +1504,14 @@ def create_app() -> FastAPI:
                 pass
 
         # Spawn the per-user coach container.
-        config_json = _apply_setup_channel_config(
-            _load_health_instance_config_template(),
-            channels_payload=payload["channels"],
+        provider_payload = payload.get("provider") or {}
+        config_json = _apply_setup_provider_config(
+            _apply_setup_channel_config(
+                _load_health_instance_config_template(),
+                channels_payload=payload["channels"],
+            ),
+            provider_payload=provider_payload,
+            api_key=provider_api_key,
         )
         try:
             config_json.setdefault("agents", {}).setdefault("defaults", {})["timezone"] = profile.get(
@@ -1454,8 +1521,11 @@ def create_app() -> FastAPI:
             pass
         spawn = None
         warnings: list[str] = list(activation_warnings)
-        if not os.environ.get("MINIMAX_API_KEY", "").strip():
-            warnings.append("MINIMAX_API_KEY is not set; the coach may not be able to reply.")
+        _chosen_provider = (provider_payload.get("provider") or "minimax").lower().strip()
+        _chosen_env_key = _PROVIDER_ENV_KEYS.get(_chosen_provider, f"{_chosen_provider.upper()}_API_KEY")
+        from nanobot.health.hosted import PROVIDER_CHOICES as _PC
+        if not _PC.get(_chosen_provider, {}).get("no_key_required") and not os.environ.get(_chosen_env_key, "").strip():
+            warnings.append(f"{_chosen_env_key} is not set; the coach may not be able to reply.")
         try:
             health_metrics.spawn_attempts.inc()
             record = await app.state.registry.get_by_setup_token(setup_token)
@@ -1470,6 +1540,7 @@ def create_app() -> FastAPI:
                     health_secret=app.state.health_secret,
                     telegram_token=telegram_token,
                 ),
+                setup_secrets=health.load_setup_secrets(secret=app.state.health_secret),
             )
             health_metrics.spawn_success.inc()
         except Exception as exc:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -16,6 +17,8 @@ from zoneinfo import ZoneInfo
 from cryptography.fernet import Fernet, InvalidToken
 
 from nanobot.utils.helpers import ensure_dir
+
+logger = logging.getLogger(__name__)
 
 _PROFILE_NAME = "profile.json"
 _VAULT_NAME = "vault.json.enc"
@@ -871,11 +874,28 @@ class HealthWorkspace:
     def runtime_overrides(self, *, secret: str | None = None) -> dict[str, Any] | None:
         setup = self.load_setup()
         if not setup or setup.get("state") != "active":
+            logger.debug(
+                "runtime_overrides: setup not active (workspace=%s, state=%s)",
+                self.workspace,
+                (setup or {}).get("state", "missing"),
+            )
             return None
         try:
             secrets_payload = self.load_setup_secrets(secret=secret)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "runtime_overrides: failed to decrypt setup secrets (workspace=%s): %s",
+                self.workspace,
+                exc,
+            )
             return None
+        provider_key_len = len(secrets_payload.get("provider", {}).get("api_key", "").strip())
+        logger.debug(
+            "runtime_overrides: returning overrides (workspace=%s, provider=%s, key_len=%d)",
+            self.workspace,
+            (setup.get("provider") or {}).get("provider", "?"),
+            provider_key_len,
+        )
         provider_key = secrets_payload.get("provider", {}).get("api_key", "").strip()
         telegram_token = secrets_payload.get("telegram", {}).get("bot_token", "").strip()
         whatsapp_bridge_url = (

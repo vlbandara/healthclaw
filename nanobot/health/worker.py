@@ -11,6 +11,7 @@ from arq.connections import RedisSettings
 
 from nanobot.health.api import (
     _apply_setup_channel_config,
+    _apply_setup_provider_config,
     _build_setup_spawn_env,
     _configure_logging,
     _load_health_instance_config_template,
@@ -87,9 +88,16 @@ async def spawn_instance_job(ctx: dict[str, Any], setup_token: str) -> dict[str,
         stable_token_hint=setup_token,
     )
 
-    config_json = _apply_setup_channel_config(
-        _load_health_instance_config_template(),
-        channels_payload=payload["channels"],
+    setup_secrets = health.load_setup_secrets(secret=health_secret)
+    provider_api_key = setup_secrets.get("provider", {}).get("api_key", "").strip()
+    provider_payload = payload.get("provider") or {}
+    config_json = _apply_setup_provider_config(
+        _apply_setup_channel_config(
+            _load_health_instance_config_template(),
+            channels_payload=payload["channels"],
+        ),
+        provider_payload=provider_payload,
+        api_key=provider_api_key,
     )
     try:
         config_json.setdefault("agents", {}).setdefault("defaults", {})["timezone"] = (
@@ -114,6 +122,7 @@ async def spawn_instance_job(ctx: dict[str, Any], setup_token: str) -> dict[str,
                 health_secret=health_secret,
                 telegram_token=telegram_token,
             ),
+            setup_secrets=setup_secrets,
         )
         spawn_success.inc()
     except Exception:

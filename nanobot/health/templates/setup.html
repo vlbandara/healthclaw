@@ -26,16 +26,20 @@
         height: 0;
       }
       .provider-card__inner {
-        border: 2px solid var(--color-border, #e2e8f0);
-        border-radius: 0.75rem;
+        border: 1px solid rgba(31, 107, 73, 0.18);
+        border-radius: 18px;
         padding: 1rem 1.1rem;
-        transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
-        background: var(--color-surface, #fff);
+        transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+        background: rgba(31, 107, 73, 0.06);
+      }
+      .provider-card:hover .provider-card__inner {
+        background: rgba(31, 107, 73, 0.1);
+        border-color: rgba(31, 107, 73, 0.28);
       }
       .provider-card input[type="radio"]:checked + .provider-card__inner {
-        border-color: var(--color-primary, #6366f1);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #6366f1) 18%, transparent);
-        background: color-mix(in srgb, var(--color-primary, #6366f1) 5%, var(--color-surface, #fff));
+        border-color: rgba(16, 185, 129, 0.4);
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+        background: rgba(16, 185, 129, 0.12);
       }
       .provider-card__icon {
         font-size: 1.6rem;
@@ -46,10 +50,11 @@
         font-weight: 600;
         font-size: 0.95rem;
         display: block;
+        color: rgba(255, 255, 255, 0.9);
       }
       .provider-card__sub {
         font-size: 0.78rem;
-        color: var(--color-muted, #64748b);
+        color: rgba(255, 255, 255, 0.45);
         margin-top: 0.2rem;
         display: block;
       }
@@ -57,7 +62,7 @@
         content: " ✦ Private";
         font-size: 0.7rem;
         font-weight: 500;
-        color: var(--color-primary, #6366f1);
+        color: var(--nh-color-accent, #10b981);
         margin-left: 0.4rem;
       }
       #provider-api-section {
@@ -75,17 +80,278 @@
       .provider-ollama-info {
         margin-top: 0.75rem;
         padding: 0.75rem 1rem;
-        border-radius: 0.5rem;
-        background: color-mix(in srgb, var(--color-primary, #6366f1) 7%, transparent);
+        border-radius: 14px;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.07);
         font-size: 0.82rem;
-        color: var(--color-muted, #475569);
+        color: rgba(255, 255, 255, 0.5);
         line-height: 1.55;
+      }
+      .provider-ollama-info strong {
+        color: rgba(255, 255, 255, 0.8);
       }
       .provider-ollama-info code {
         font-size: 0.8rem;
-        background: color-mix(in srgb, var(--color-primary, #6366f1) 12%, transparent);
+        background: rgba(16, 185, 129, 0.12);
+        color: var(--nh-color-accent, #10b981);
         padding: 0.1rem 0.35rem;
         border-radius: 0.25rem;
+      }
+
+      /* Step progress indicator */
+      .step-progress {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        margin: 1rem 0 1.5rem;
+        padding: 0;
+        list-style: none;
+      }
+      .step-progress__item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex: 1;
+        position: relative;
+        font-size: 0.7rem;
+        color: var(--color-muted, #94a3b8);
+      }
+      .step-progress__item + .step-progress__item::before {
+        content: "";
+        position: absolute;
+        top: 8px;
+        left: calc(-50% + 10px);
+        right: calc(50% + 10px);
+        height: 2px;
+        background: var(--color-border, #e2e8f0);
+        transition: background 0.25s;
+      }
+      .step-progress__item.is-done + .step-progress__item::before {
+        background: var(--color-primary, #6366f1);
+      }
+      .step-progress__dot {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid var(--color-border, #e2e8f0);
+        background: var(--color-surface, #fff);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 0.3rem;
+        transition: border-color 0.2s, background 0.2s;
+        font-size: 0.6rem;
+        color: #fff;
+        font-weight: 700;
+      }
+      .step-progress__item.is-active .step-progress__dot {
+        border-color: var(--color-primary, #6366f1);
+        background: var(--color-primary, #6366f1);
+      }
+      .step-progress__item.is-done .step-progress__dot {
+        border-color: var(--color-primary, #6366f1);
+        background: var(--color-primary, #6366f1);
+      }
+      .step-progress__item.is-active {
+        color: var(--color-primary, #6366f1);
+        font-weight: 600;
+      }
+      .step-progress__label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 58px;
+        text-align: center;
+      }
+
+      /* Wearable provider tile grid */
+      .wearable-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.65rem;
+        margin: 1rem 0 0.5rem;
+      }
+      .wearable-tile {
+        border: 1px solid rgba(31, 107, 73, 0.18);
+        border-radius: 18px;
+        padding: 0.85rem 1rem;
+        background: rgba(31, 107, 73, 0.06);
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+        transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+      }
+      .wearable-tile:hover {
+        background: rgba(31, 107, 73, 0.1);
+        border-color: rgba(31, 107, 73, 0.28);
+      }
+      .wearable-tile.is-connected {
+        border-color: rgba(16, 185, 129, 0.4);
+        background: rgba(16, 185, 129, 0.08);
+      }
+      .wearable-tile__header {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+      }
+      .wearable-tile__logo {
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.07);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px;
+        box-sizing: border-box;
+      }
+      .wearable-tile__logo img {
+        width: 100%;
+        height: 100%;
+        filter: brightness(0) invert(1);
+        opacity: 0.75;
+      }
+      .wearable-tile__name {
+        font-weight: 600;
+        font-size: 0.85rem;
+        line-height: 1.2;
+        color: rgba(255, 255, 255, 0.9);
+      }
+      .wearable-tile__blurb {
+        font-size: 0.73rem;
+        color: rgba(255, 255, 255, 0.45);
+        line-height: 1.4;
+      }
+      .wearable-tile__chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 0.2rem 0.55rem;
+        border-radius: 99px;
+        width: fit-content;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border: none;
+      }
+      .wearable-tile__chip--connect {
+        background: rgba(16, 185, 129, 0.18);
+        color: var(--nh-color-accent, #10b981);
+        cursor: pointer;
+      }
+      .wearable-tile__chip--connect:hover {
+        background: rgba(16, 185, 129, 0.28);
+      }
+      .wearable-tile__chip--connected {
+        background: rgba(16, 185, 129, 0.15);
+        color: #6ee7b7;
+      }
+      .wearable-tile__chip--soon {
+        background: rgba(255, 255, 255, 0.07);
+        color: rgba(255, 255, 255, 0.35);
+      }
+      .wearable-tile__chip--error {
+        background: rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
+      }
+      .wearable-tile__actions {
+        display: flex;
+        gap: 0.4rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .wearable-tile__sync-btn {
+        font-size: 0.7rem;
+        color: rgba(16, 185, 129, 0.7);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .wearable-tile__sync-btn:hover {
+        color: var(--nh-color-accent, #10b981);
+      }
+
+      /* More providers collapsible */
+      .more-providers-toggle {
+        font-size: 0.78rem;
+        color: rgba(255, 255, 255, 0.4);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.3rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin: 0.25rem 0 0.1rem;
+        box-shadow: none;
+      }
+      .more-providers-toggle:hover {
+        color: rgba(255, 255, 255, 0.65);
+        background: none;
+        box-shadow: none;
+        transform: none;
+      }
+      .more-providers-toggle::before {
+        content: "▸";
+        font-size: 0.65rem;
+        transition: transform 0.2s;
+      }
+      .more-providers-toggle.is-open::before {
+        transform: rotate(90deg);
+      }
+      #more-providers-grid {
+        display: none;
+      }
+      #more-providers-grid.is-open {
+        display: grid;
+      }
+
+      /* Wearable summary card */
+      .wearable-summary-bar {
+        margin-top: 0.75rem;
+        padding: 0.7rem 0.9rem;
+        border-radius: 14px;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        font-size: 0.78rem;
+        color: rgba(255, 255, 255, 0.4);
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+      .wearable-connected-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        margin-top: 0.25rem;
+      }
+      .wearable-connected-chip {
+        background: rgba(16, 185, 129, 0.15);
+        color: #6ee7b7;
+        font-size: 0.68rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 99px;
+      }
+
+      /* Skip button */
+      .skip-link {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 0.8rem;
+        color: var(--color-muted, #94a3b8);
+        padding: 0;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .skip-link:hover {
+        color: var(--color-text, #475569);
       }
     </style>
   </head>
@@ -114,6 +380,30 @@
               Connect Telegram, choose the vibe, then turn it on.
             {% endif %}
           </p>
+
+          <!-- Step progress indicator -->
+          <ol class="step-progress" id="step-progress" aria-label="Setup progress">
+            <li class="step-progress__item is-active" data-progress-step="0">
+              <div class="step-progress__dot">✓</div>
+              <span class="step-progress__label">AI Brain</span>
+            </li>
+            <li class="step-progress__item" data-progress-step="1">
+              <div class="step-progress__dot">✓</div>
+              <span class="step-progress__label">Telegram</span>
+            </li>
+            <li class="step-progress__item" data-progress-step="2">
+              <div class="step-progress__dot">✓</div>
+              <span class="step-progress__label">Wearables</span>
+            </li>
+            <li class="step-progress__item" data-progress-step="3">
+              <div class="step-progress__dot">✓</div>
+              <span class="step-progress__label">Vibe</span>
+            </li>
+            <li class="step-progress__item" data-progress-step="4">
+              <div class="step-progress__dot">✓</div>
+              <span class="step-progress__label">Activate</span>
+            </li>
+          </ol>
         </header>
 
         <form
@@ -208,8 +498,9 @@
 
               <label class="tap-field">
                 <span>Bot token</span>
-                <input name="telegram_bot_token" autocomplete="off" placeholder="123456789:AA..." />
+                <input name="telegram_bot_token" autocomplete="off" placeholder="123456789:AA..." id="telegram-token-input" />
               </label>
+              <p id="telegram-token-hint" class="helper" style="font-size:0.75rem;margin-top:0.2rem;min-height:1.1em"></p>
               <button type="button" id="connect-telegram">Connect Telegram</button>
               <p id="telegram-summary" class="helper channel-inline-status"></p>
 
@@ -283,46 +574,40 @@
 
           <!-- Step 2: Wearables -->
           <section class="step" data-step="2">
-            <h2 class="step-heading">Connect wearables</h2>
-            <p class="step-copy">Optional for v1. If Open Wearables is enabled on this Healthclaw host, you can link a supported provider now and let your companion use recent sleep, recovery, and activity summaries.</p>
+            <h2 class="step-heading">Connect your wearables</h2>
+            <p class="step-copy">Optional — but powerful. Link a wearable and your companion can use real sleep, recovery, and activity data in every conversation.</p>
 
-            <section class="channel-card channel-card--setup active">
-              <div class="channel-card__header">
-                <div>
-                  <h3>Open Wearables</h3>
-                  <p class="helper">One connection layer for Garmin, Polar, Suunto, Whoop, Strava, Fitbit, and other supported cloud providers.</p>
-                </div>
-                <span class="channel-badge" id="wearables-badge">Experimental</span>
-              </div>
+            <!-- Featured providers: always rendered -->
+            <div class="wearable-grid" id="wearable-featured-grid">
+              <!-- Tiles injected by JS from featured_providers payload -->
+            </div>
 
-              <div class="channel-compact-status" id="wearables-configured-state" hidden>
-                <strong>Wearables are enabled on this host.</strong>
-                <p id="wearables-configured-copy" class="helper">Choose a provider to start OAuth.</p>
-              </div>
+            <!-- More providers (collapsible) -->
+            <button type="button" class="more-providers-toggle" id="more-providers-toggle">More providers</button>
+            <div class="wearable-grid" id="more-providers-grid">
+              <!-- Extended provider tiles injected by JS -->
+            </div>
 
-              <label class="tap-field">
-                <span>Provider</span>
-                <select id="wearables-provider-select" name="wearables_provider">
-                  <option value="">Choose a provider…</option>
-                </select>
-              </label>
+            <!-- Inline status -->
+            <p id="wearables-summary" class="helper channel-inline-status" style="margin-top:0.5rem">You can skip this and add wearables later from chat.</p>
 
-              <div class="support-actions" style="margin-top:0.75rem">
-                <button type="button" id="connect-wearable">Connect wearable</button>
-                <button type="button" id="sync-wearables" class="secondary">Sync now</button>
-              </div>
-              <p id="wearables-summary" class="helper channel-inline-status">You can skip this for now and add it later.</p>
-              <div class="summary-card" style="margin-top:0.85rem">
-                <p id="wearables-connected-list" class="helper">Connected providers: none.</p>
-                <p id="wearables-freshness" class="helper">No wearable snapshot yet.</p>
-              </div>
-            </section>
+            <!-- Connected summary bar -->
+            <div class="wearable-summary-bar" id="wearable-summary-bar">
+              <span id="wearables-freshness">No wearable snapshot yet.</span>
+              <div class="wearable-connected-chips" id="wearable-connected-chips"></div>
+              <span id="wearable-example-hint" style="display:none;font-style:italic"></span>
+            </div>
+
+            <!-- Hidden select preserved for any legacy JS still referencing it -->
+            <select id="wearables-provider-select" name="wearables_provider" style="display:none">
+              <option value="">Choose a provider…</option>
+            </select>
           </section>
 
           <!-- Step 3: Vibe -->
           <section class="step" data-step="3">
             <h2 class="step-heading">Pick the starting vibe</h2>
-            <p class="step-copy">Just the starting point. It can adapt as it learns what actually helps. We also detect your timezone here, but you can override it now and change it later in chat.</p>
+            <p class="step-copy">Just the starting point — it adapts as it learns what actually helps you.</p>
             <div class="tap-grid tap-grid--vibe">
               <label class="tap-card tap-card--vibe">
                 <input type="radio" name="tone_style" value="gentle" checked />
@@ -337,7 +622,7 @@
                 <span>Calm</span>
               </label>
             </div>
-            <div class="tap-toggles">
+            <div class="tap-toggles" style="margin-top:1rem">
               <label class="toggle-row">
                 <input name="morning_check_in" type="checkbox" checked />
                 <span>
@@ -353,10 +638,12 @@
                 </span>
               </label>
             </div>
+
+            <p class="step-copy" style="margin-top:1.25rem;margin-bottom:0.25rem;font-size:0.85rem;color:var(--color-muted,#64748b)">Your timezone</p>
             <label class="tap-field">
               <span>Timezone</span>
               <input name="timezone" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Asia/Colombo" />
-              <small class="field-hint">Detected from this browser first. Edit it if your real schedule should follow another timezone.</small>
+              <small class="field-hint">Detected from this browser first. Edit if your schedule runs in a different timezone.</small>
             </label>
             <div class="time-pill" id="setup-timezone-pill">Detected here: checking your local time…</div>
           </section>
@@ -364,16 +651,18 @@
           <!-- Step 4: Activate -->
           <section class="step" data-step="4">
             <h2 class="step-heading">Turn it on</h2>
-            <p class="step-copy">We'll switch everything on and send you straight into Telegram. Your timezone is summarized here so you can catch it before activation.</p>
+            <p class="step-copy">We'll switch everything on and send you straight into Telegram.</p>
             <div class="summary-card">
               <p id="finish-summary" class="helper">Connect Telegram first, then continue.</p>
               <p id="finish-timezone" class="helper">Timezone will follow your local setup.</p>
+              <p id="finish-wearables" class="helper"></p>
             </div>
           </section>
 
           <footer class="actions">
             <button type="button" id="back" class="secondary">Back</button>
             <button type="button" id="next">Continue</button>
+            <button type="button" id="skip-step" class="skip-link" style="display:none">Skip for now</button>
             <button type="button" id="activate">Wake my companion</button>
           </footer>
         </form>

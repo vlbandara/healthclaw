@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -11,10 +12,13 @@ from nanobot.providers.anonymizing import AnonymizingProvider
 from nanobot.providers.base import GenerationSettings, LLMProvider, LLMResponse
 from nanobot.security.anonymizer import PIIAnonymizer
 
+logger = logging.getLogger(__name__)
+
 
 def _apply_health_runtime_overrides(config: Config, workspace: Path) -> Config:
     resolved = config.model_copy(deep=True)
-    overrides = HealthWorkspace(workspace).runtime_overrides()
+    secret = os.environ.get("HEALTH_VAULT_KEY", "").strip() or None
+    overrides = HealthWorkspace(workspace).runtime_overrides(secret=secret)
     if not overrides:
         return resolved
 
@@ -128,7 +132,14 @@ class DeferredHealthProvider(LLMProvider):
         config = _apply_health_runtime_overrides(self._base_config, self._workspace)
         try:
             provider = _build_configured_provider(config, workspace=self._workspace)
-        except ValueError:
+        except ValueError as exc:
+            logger.warning(
+                "DeferredHealthProvider: provider not ready (workspace=%s, provider=%s, model=%s): %s",
+                self._workspace,
+                config.agents.defaults.provider,
+                config.agents.defaults.model,
+                exc,
+            )
             return None
         provider.generation = self.generation
         return provider
@@ -174,7 +185,12 @@ def create_provider(config: Config, *, workspace: Path | None = None) -> LLMProv
     if health_distribution_enabled(workspace_path):
         try:
             return _build_configured_provider(resolved_config, workspace=workspace_path)
-        except ValueError:
+        except ValueError as exc:
+            logger.warning(
+                "create_provider: falling back to DeferredHealthProvider (workspace=%s): %s",
+                workspace_path,
+                exc,
+            )
             return DeferredHealthProvider(config, workspace=workspace_path)
 
     return _build_configured_provider(resolved_config, workspace=workspace_path)

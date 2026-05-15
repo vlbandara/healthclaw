@@ -30,6 +30,14 @@ from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.search import GlobTool, GrepTool
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.spawn import SpawnTool
+from nanobot.agent.tools.wearables import (
+    GetActivitySummaryTool,
+    GetBodySummaryTool,
+    GetRecoverySummaryTool,
+    GetSleepSummaryTool,
+    ListWearableConnectionsTool,
+    SyncWearablesTool,
+)
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
@@ -44,7 +52,7 @@ from nanobot.health.continuity import (
     select_opening_style,
     select_variation_mode,
 )
-from nanobot.health.openwearables import wearable_context_lines
+from nanobot.health.openwearables import openwearables_enabled, wearable_context_lines
 from nanobot.health.safety import emergency_response, is_emergency_language
 from nanobot.health.storage import HealthWorkspace, health_distribution_enabled, is_health_workspace
 from nanobot.providers.base import GenerationSettings, LLMProvider
@@ -353,6 +361,16 @@ class AgentLoop:
         if is_health_workspace(self.workspace):
             self.tools.register(SetPreferredNameTool(self.workspace))
             self.tools.register(UpdateHealthProfileTool(self.workspace))
+            if openwearables_enabled():
+                for cls in (
+                    GetSleepSummaryTool,
+                    GetRecoverySummaryTool,
+                    GetActivitySummaryTool,
+                    GetBodySummaryTool,
+                    ListWearableConnectionsTool,
+                    SyncWearablesTool,
+                ):
+                    self.tools.register(cls(self.workspace))
         if self.cron_service:
             self.tools.register(
                 CronTool(self.cron_service, default_timezone=self.context.timezone or "UTC")
