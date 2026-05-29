@@ -90,67 +90,57 @@ The repo now includes a static GitHub Pages site in [`site/`](/Users/vinodhlahir
 - Static assets: `site/assets/`
 - Publish trigger: push to `main`
 
-## Choose Your Setup Path
-
-| Path | Best for | What you need |
-|---|---|---|
-| Local + private | Personal use, demos, privacy-first setups | Docker, Ollama, a Telegram bot token |
-| Hosted provider | Faster setup on lighter hardware | Docker, a provider API key, a Telegram bot token |
-
 ## Quick Start
 
-### 1. Clone and Configure
+No config files, no key generation, no accounts. You need Docker, and that's it.
 
 ```bash
 git clone https://github.com/vlbandara/healthclaw.git
 cd healthclaw
-cp .env.example .env
+docker compose up
 ```
 
-### 2. Pick a Provider
+The first run generates its own secrets, applies database migrations, pulls the
+published image, and starts the onboarding surface at **http://localhost:8080**.
+Open it, create a workspace, and follow the setup flow.
 
-Local and private with Ollama:
+> Prefer make? `make up` then `make smoke` to confirm it's healthy.
+
+<details>
+<summary><strong>Connect a model provider</strong></summary>
+
+Each user picks their provider during web setup — no global config needed.
+
+- **Local + private (Ollama):** install Ollama on the host and pull a model
+  (`ollama pull gemma:7b`), then choose Ollama in the setup flow.
+- **Hosted (OpenRouter / MiniMax):** paste your API key in the setup flow.
+
+</details>
+
+<details>
+<summary><strong>Add Telegram</strong></summary>
+
+Create a bot with [@BotFather](https://t.me/BotFather), copy the token, and paste
+it into the Telegram step during setup. Each user can connect their own bot.
+See [Telegram setup](docs/TELEGRAM_BOTFATHER_SETUP.md).
+
+</details>
+
+<details>
+<summary><strong>Other ways to run it</strong></summary>
 
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull gemma:7b
+docker compose pull        # use the published GHCR image
+docker compose build       # build the image locally instead
+HEALTH_HTTP_PORT=9000 docker compose up   # change the web port
 ```
 
-Set at least these values in `.env`:
+Advanced overrides (provider fallbacks, wearables, WhatsApp bridge, custom
+secrets) live in [`.env.advanced.example`](.env.advanced.example). For a public
+TLS deployment, see [Self-Hosting](docs/SELF_HOSTING.md). For the longer
+walkthrough, see [Getting Started](docs/GETTING_STARTED.md).
 
-```env
-NANOBOT_AGENTS__DEFAULTS__PROVIDER=ollama
-NANOBOT_AGENTS__DEFAULTS__MODEL=gemma:7b
-OLLAMA_API_BASE=http://host.docker.internal:11434
-TELEGRAM_BOT_TOKEN=123456789:your-token
-HEALTH_VAULT_KEY=generate-a-fernet-key
-POSTGRES_PASSWORD=change-me
-```
-
-Hosted provider with OpenRouter:
-
-```env
-NANOBOT_AGENTS__DEFAULTS__PROVIDER=openrouter
-NANOBOT_AGENTS__DEFAULTS__MODEL=openai/gpt-4o-mini
-OPENROUTER_API_KEY=your-key
-TELEGRAM_BOT_TOKEN=123456789:your-token
-HEALTH_VAULT_KEY=generate-a-fernet-key
-POSTGRES_PASSWORD=change-me
-```
-
-### 3. Start the Stack
-
-Bring up the core services:
-
-```bash
-docker compose --env-file .env up -d --build postgres redis orchestrator worker
-```
-
-Open the onboarding surface at `http://localhost:18080`, connect your Telegram bot, and send your first message.
-
-If you also want wearable integrations, configure Open Wearables first and use the wearables step during hosted setup. See [Open Wearables Integration](docs/OPENWEARABLES.md).
-
-If you want the longer walkthrough, use [Getting Started](docs/GETTING_STARTED.md).
+</details>
 
 ## Runtime Compatibility
 

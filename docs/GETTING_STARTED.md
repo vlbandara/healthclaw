@@ -1,147 +1,83 @@
 # Getting Started with Healthclaw
 
-This guide walks you through setting up Healthclaw for the first time. We'll cover both the **local (private)** path using Ollama + Gemma, and the **cloud API** path.
+This guide walks you through setting up Healthclaw for the first time.
 
 Healthclaw is the public product name for this fork. In v0.2, some runtime identifiers still use `nanobot`, including the CLI command, workspace path, and `NANOBOT_*` environment variables.
 
-## Choose Your Path
-
-| | Local + Private (Recommended) | Cloud API |
-|---|---|---|
-| Privacy | 100% local, no data leaves your machine | Data sent to third-party API |
-| Setup | Requires Ollama installed | Requires API key only |
-| Cost | Free (local Gemma) | Pay for API usage |
-| Hardware | 8GB+ RAM recommended | Any machine |
+The only prerequisite is **Docker** ([Docker Desktop](https://docs.docker.com/get-docker/) on Mac/Windows, Docker Engine on Linux). Everything else — secrets, the database schema, the image — is handled for you.
 
 ---
 
-## Option A: Local Setup (Recommended)
-
-This path keeps all your conversations 100% on your machine using Google's Gemma model via Ollama.
-
-### Prerequisites
-
-- [Docker Desktop](https://docs.docker.com/get-docker/) (Mac, Windows, or Linux)
-- [Ollama](https://ollama.com/) installed on your host machine
-- 8GB+ RAM for Gemma 7B (or 4GB+ for Gemma 2B)
-
-### Step 1: Install Ollama and Pull Gemma
+## Step 1: Start the Stack
 
 ```bash
-# Install Ollama (macOS/Linux)
+git clone https://github.com/vlbandara/healthclaw.git
+cd healthclaw
+docker compose up
+```
+
+On the first run Healthclaw will:
+
+- generate a vault encryption key and a Postgres password (stored in a Docker volume — you never see or copy them),
+- run database migrations,
+- pull the published image (or build it locally if the image isn't available),
+- start the onboarding surface on **http://localhost:8080**.
+
+To run it in the background, use `docker compose up -d` (or `make up`). Confirm it's healthy with `make smoke`.
+
+---
+
+## Step 2: Create Your Workspace
+
+Open **http://localhost:8080** and start the setup flow. Healthclaw provisions a private per-user workspace with isolated memory and profile state. You'll choose a model provider and (optionally) connect a chat channel.
+
+---
+
+## Step 3: Choose a Model Provider
+
+Each user picks their provider during setup — there is no global model config to edit.
+
+### Local + private (Ollama)
+
+Keeps all conversations on your machine.
+
+```bash
+# Install Ollama on the host (macOS/Linux)
 curl -fsSL https://ollama.com/install.sh | sh
+# or: brew install ollama
 
-# Or on macOS, install via Homebrew
-brew install ollama
+# Pull a model
+ollama pull gemma:7b      # 8GB+ RAM
+# ollama pull gemma:2b    # lower-resource machines
 
-# Pull the Gemma 7B model (recommended)
-ollama pull gemma:7b
-
-# Or for lower-resource machines, use Gemma 2B
-# ollama pull gemma:2b
-```
-
-### Step 2: Clone and Configure
-
-```bash
-git clone https://github.com/vlbandara/healthclaw.git
-cd healthclaw
-
-# Create your config from the template
-cp .env.example .env
-
-# Open .env in your editor and set your Telegram bot token
-# See Step 3 below
-```
-
-### Step 3: Get a Telegram Bot Token
-
-1. Open Telegram and search for **@BotFather**
-2. Send `/newbot`
-3. Follow the prompts, give it a name and username
-4. Copy the token BotFather gives you
-5. Add it to your `.env` file:
-   ```
-   TELEGRAM_BOT_TOKEN=123456789:YOUR_TOKEN_HERE
-   ```
-
-### Step 4: Verify Ollama is Running
-
-```bash
-# Test that Ollama is accessible
+# Verify it's reachable
 curl http://localhost:11434
-
-# You should see: {"status":"ok"}
 ```
 
-### Step 5: Start the Stack
+Then select **Ollama** in the setup flow. Containers reach the host via `host.docker.internal:11434`.
 
-```bash
-docker compose --env-file .env up -d --build postgres redis orchestrator worker
+### Hosted provider (OpenRouter / MiniMax / others)
 
-# Watch the logs to confirm everything started
-docker compose --env-file .env logs -f
-```
-
-### Step 6: Say Hello
-
-Open Telegram, find your bot by its username, and send a message like "Hi".
-
-Healthclaw will greet you and begin a brief wellbeing onboarding conversation to personalize your experience.
+Paste your API key into the provider step during setup. No host installation required — good for lighter machines.
 
 ---
 
-## Option B: Cloud API Setup
+## Step 4: Connect Telegram (optional)
 
-If you prefer not to run locally, you can use a cloud LLM via OpenRouter or other providers.
+To talk to your companion over Telegram:
 
-### Step 1: Clone and Configure
+1. Open Telegram and message [@BotFather](https://t.me/BotFather)
+2. Send `/newbot` and follow the prompts
+3. Copy the token BotFather gives you
+4. Paste it into the **Telegram** step during setup
 
-```bash
-git clone https://github.com/vlbandara/healthclaw.git
-cd healthclaw
+Each user connects their own bot. See [Telegram setup](TELEGRAM_BOTFATHER_SETUP.md) for screenshots. Wearables can be linked during setup too — see [Open Wearables](OPENWEARABLES.md).
 
-cp .env.example .env
-```
+---
 
-### Step 2: Get an API Key
+## Step 5: Say Hello
 
-**OpenRouter** (recommended — unified access to many models):
-
-1. Go to [openrouter.ai](https://openrouter.ai/)
-2. Sign up and get an API key
-3. Add to `.env`:
-   ```
-   NANOBOT_AGENTS__DEFAULTS__PROVIDER=openrouter
-   NANOBOT_AGENTS__DEFAULTS__MODEL=openai/gpt-4o-mini
-   OPENROUTER_API_KEY=sk-or-v1-your-key-here
-   ```
-
-Or use other providers directly:
-
-```env
-# Anthropic direct
-NANOBOT_AGENTS__DEFAULTS__PROVIDER=anthropic
-NANOBOT_AGENTS__DEFAULTS__MODEL=claude-sonnet-4-5
-ANTHROPIC_API_KEY=sk-ant-...
-
-# OpenAI direct
-NANOBOT_AGENTS__DEFAULTS__PROVIDER=openai
-NANOBOT_AGENTS__DEFAULTS__MODEL=gpt-4o
-OPENAI_API_KEY=sk-...
-```
-
-### Step 3: Add Telegram Token
-
-As in Option A, get a Telegram bot token from @BotFather and add it to `.env`.
-
-### Step 4: Start the Stack
-
-```bash
-docker compose --env-file .env up -d --build postgres redis orchestrator worker
-```
-
-Open the onboarding surface at `http://localhost:18080`.
+Finish setup to provision your companion. Open Telegram (or your connected channel) and send "Hi" — Healthclaw greets you and begins a brief wellbeing onboarding to personalize your experience.
 
 ---
 
@@ -167,7 +103,7 @@ Healthclaw supports three tone presets. Set in `SOUL.md` or via the personality 
 
 ---
 
-## Hardware Guidance
+## Hardware Guidance (local models)
 
 | Model | RAM Required | Use Case |
 |-------|-------------|----------|
@@ -182,6 +118,7 @@ Run `ollama run gemma:7b` to verify it works. Exit with `/bye`.
 ## Next Steps
 
 - [Family Setup](FAMILY_WELLBEING_LOCAL_SETUP.md) — Onboard multiple family members
+- [Self-Hosting](SELF_HOSTING.md) — Deploy publicly with TLS
 - [Architecture](ARCHITECTURE.md) — Understand how Healthclaw works
 - [Customization](CUSTOMIZATION.md) — Adjust personality and tone
 - [FAQ](FAQ.md) — Common questions and troubleshooting
@@ -190,23 +127,27 @@ Run `ollama run gemma:7b` to verify it works. Exit with `/bye`.
 
 ## Troubleshooting
 
-**Ollama not responding:**
+**See what's happening:**
 ```bash
-# Restart Ollama
-ollama serve
-
-# Check if it's running
-ps aux | grep ollama
+docker compose logs -f          # all services
+docker compose logs orchestrator
+docker compose ps               # service status
 ```
+
+**Ollama not reachable from containers:**
+```bash
+ollama serve                    # make sure it's running
+curl http://localhost:11434     # should respond on the host
+```
+Containers connect via `host.docker.internal:11434` (works out of the box on Docker Desktop; on Linux ensure host networking or the `host.docker.internal` host mapping is available).
 
 **Docker permission issues (Linux):**
 ```bash
-# Add yourself to the docker group
-sudo usermod -aG docker $USER
-# Then log out and back in
+sudo usermod -aG docker $USER   # then log out and back in
 ```
 
-**Can't find your bot on Telegram:**
-- Verify `TELEGRAM_BOT_TOKEN` is correct in `.env`
-- Restart the stack: `docker compose --env-file .env restart worker`
-- Check logs: `docker compose --env-file .env logs worker | tail -50`
+**Start over from a clean slate:**
+```bash
+docker compose down -v          # removes data + generated secrets
+docker compose up
+```
