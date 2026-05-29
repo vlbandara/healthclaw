@@ -1,94 +1,145 @@
-name: Healthclaw
+name: healthclaw
 
-# Shared configuration template for all Healthclaw services
-x-common-config: &common-config
-  # Build from the Dockerfile in the project root
+# One-command Healthclaw stack.
+#
+#   docker compose up
+#
+# No .env editing required: the `bootstrap` service generates the vault key
+# and Postgres password on first run, migrations run automatically, and the
+# orchestrator comes up on http://localhost:8080. See .env.example for the
+# handful of optional overrides, and .env.advanced.example for power-user knobs.
+
+x-healthclaw-image: &healthclaw-image
+  image: ${HEALTHCLAW_IMAGE:-ghcr.io/vlbandara/healthclaw:latest}
+  # Falls back to a local build when the published image is not available.
   build:
     context: .
     dockerfile: Dockerfile
-  # Mount the nanobot state directory for persistent data
-  volumes:
-    - ${NANOBOT_STATE_DIR:-~/.nanobot}:/home/nanobot/.nanobot
-  environment: &common-env
-    # AI Provider Configuration
-    # For local/private: use Ollama (set OLLAMA_API_BASE)
-    # For cloud: set MINIMAX_API_KEY or other provider keys
-    MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-    OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-    GROQ_API_KEY: ${GROQ_API_KEY:-}
-    # Health vault encryption key (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-    HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
-    HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
-    # Telegram bot configuration
-    HEALTH_TELEGRAM_BOT_URL: ${HEALTH_TELEGRAM_BOT_URL:-}
-    # WhatsApp bridge for WhatsApp channel support
-    HEALTH_WHATSAPP_CHAT_URL: ${HEALTH_WHATSAPP_CHAT_URL:-}
-    HEALTH_WHATSAPP_BRIDGE_URL: ${HEALTH_WHATSAPP_BRIDGE_URL:-ws://whatsapp-bridge:3001}
-    WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}
-    # Deployment metadata (for self-hosting)
-    APP_RELEASE: ${APP_RELEASE:-}
-    APP_DEPLOYED_AT: ${APP_DEPLOYED_AT:-}
-  # Security: drop all capabilities, add only what's needed
-  cap_drop:
-    - ALL
-  cap_add:
-    - SYS_ADMIN
-  security_opt:
-    - apparmor=unconfined
-    - seccomp=unconfined
+
+x-orchestrator-env: &orchestrator-env
+  # Provider keys are normally entered per-user in the web setup flow; these
+  # optional globals are passed through to spawned coaches as a fallback.
+  MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  NANOBOT_WORKSPACE: /home/nanobot/.nanobot/workspace
+  NANOBOT_HEALTH_INSTANCE_IMAGE: ${HEALTHCLAW_IMAGE:-ghcr.io/vlbandara/healthclaw:latest}
+  ARQ_REDIS_URL: ${ARQ_REDIS_URL:-redis://redis:6379/0}
+  POSTGRES_USER: nanohealth
+  POSTGRES_DB: nanohealth
+  POSTGRES_HOST: postgres
+  HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-http://localhost:${HEALTH_HTTP_PORT:-8080}}
+  HEALTH_TELEGRAM_BOT_URL: ${HEALTH_TELEGRAM_BOT_URL:-}
+  APP_RELEASE: ${APP_RELEASE:-local}
+  APP_DEPLOYED_AT: ${APP_DEPLOYED_AT:-}
 
 services:
+  # ── First-run secret generation (runs once, then exits) ───────────────
+  bootstrap:
+    <<: *healthclaw-image
+    container_name: healthclaw-bootstrap
+    restart: "no"
+    # Runs as root to initialize the (root-owned) secrets volume; the generated
+    # files are made readable by the non-root app/postgres users below.
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/app/docker/bootstrap-secrets.sh"]
+    volumes:
+      - secrets:/secrets
+
   redis:
     image: redis:7-alpine
-    container_name: Healthclaw-redis
+    container_name: healthclaw-redis
     restart: unless-stopped
-    logging:
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: &logging
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
 
   postgres:
-    image: postgres:16-alpine
-    container_name: Healthclaw-postgres
+    # pgvector-enabled Postgres: the schema requires the "vector" extension.
+    image: pgvector/pgvector:pg16
+    container_name: healthclaw-postgres
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
     environment:
       POSTGRES_DB: nanohealth
       POSTGRES_USER: nanohealth
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nanohealth}
+      POSTGRES_PASSWORD_FILE: /secrets/postgres_password
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - secrets:/secrets:ro
     restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nanohealth -d nanohealth"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+
+  # ── Database migrations (runs once, then exits) ───────────────────────
+  migrate:
+    <<: *healthclaw-image
+    container_name: healthclaw-migrate
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/app/docker/entrypoint.sh"]
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment:
+      <<: *orchestrator-env
+    volumes:
+      - secrets:/secrets:ro
+    logging: *logging
 
   orchestrator:
-    <<: *common-config
-    image: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-Healthclaw-orchestrator:latest}
-    container_name: Healthclaw-orchestrator
+    <<: *healthclaw-image
+    container_name: healthclaw-orchestrator
     depends_on:
-      - postgres
-      - redis
+      bootstrap:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # The orchestrator spawns a per-user coach container via the Docker socket.
     user: "0:0"
+    cap_drop:
+      - ALL
     cap_add:
       - SYS_ADMIN
       - DAC_OVERRIDE
-    entrypoint: ["python", "-m", "uvicorn"]
-    command: ["nanobot.health.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
-    volumes:
-      - ${NANOBOT_STATE_DIR:-~/.nanobot}:/home/nanobot/.nanobot
-      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - apparmor=unconfined
+      - seccomp=unconfined
+    entrypoint: ["/app/docker/entrypoint.sh"]
+    command:
+      - python
+      - -m
+      - uvicorn
+      - nanobot.health.api:create_app
+      - --factory
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
     environment:
-      <<: *common-env
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
-      HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
-      NANOBOT_WORKSPACE: /home/nanobot/.nanobot/workspace
-      NANOBOT_HEALTH_INSTANCE_IMAGE: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-Healthclaw-orchestrator:latest}
-      NANOBOT_HEALTH_REGISTRY_URL: ${NANOBOT_HEALTH_REGISTRY_URL:-postgresql://nanohealth:${POSTGRES_PASSWORD:-nanohealth}@postgres:5432/nanohealth}
-      ARQ_REDIS_URL: ${ARQ_REDIS_URL:-redis://redis:6379/0}
+      <<: *orchestrator-env
+    volumes:
+      - ${NANOBOT_STATE_DIR:-nanobot_state}:/home/nanobot/.nanobot
+      - /var/run/docker.sock:/var/run/docker.sock
+      - secrets:/secrets:ro
     ports:
       - "${HEALTH_HTTP_PORT:-8080}:8080"
     restart: unless-stopped
@@ -97,61 +148,41 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  caddy:
-    image: caddy:2.9-alpine
-    container_name: Healthclaw-caddy
-    depends_on:
-      - orchestrator
-    ports:
-      - "${CADDY_HTTP_PORT:-80}:80"
-      - "${CADDY_HTTPS_PORT:-443}:443"
-    environment:
-      DOMAIN: ${DOMAIN}
-    volumes:
-      - ./deploy/health/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      start_period: 20s
+    logging: *logging
 
   worker:
-    <<: *common-config
-    container_name: Healthclaw-worker
+    <<: *healthclaw-image
+    container_name: healthclaw-worker
     depends_on:
-      - postgres
-      - redis
-    entrypoint: ["python", "-m", "nanobot.health.worker"]
-    volumes:
-      - ${NANOBOT_STATE_DIR:-~/.nanobot}:/home/nanobot/.nanobot
-      - /var/run/docker.sock:/var/run/docker.sock
+      bootstrap:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_ADMIN
+      - DAC_OVERRIDE
+    security_opt:
+      - apparmor=unconfined
+      - seccomp=unconfined
+    entrypoint: ["/app/docker/entrypoint.sh"]
+    command: ["python", "-m", "nanobot.health.worker"]
     environment:
-      <<: *common-env
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      HEALTH_VAULT_KEY: ${HEALTH_VAULT_KEY:-}
-      HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
-      NANOBOT_WORKSPACE: /home/nanobot/.nanobot/workspace
-      NANOBOT_HEALTH_INSTANCE_IMAGE: ${NANOBOT_HEALTH_INSTANCE_IMAGE:-Healthclaw-orchestrator:latest}
-      NANOBOT_HEALTH_REGISTRY_URL: ${NANOBOT_HEALTH_REGISTRY_URL:-postgresql://nanohealth:${POSTGRES_PASSWORD:-nanohealth}@postgres:5432/nanohealth}
-      ARQ_REDIS_URL: ${ARQ_REDIS_URL:-redis://redis:6379/0}
+      <<: *orchestrator-env
+    volumes:
+      - ${NANOBOT_STATE_DIR:-nanobot_state}:/home/nanobot/.nanobot
+      - /var/run/docker.sock:/var/run/docker.sock
+      - secrets:/secrets:ro
     restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
+    logging: *logging
 
 volumes:
-  caddy_data:
-  caddy_config:
   pg_data:
+  secrets:
+  nanobot_state:

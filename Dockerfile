@@ -1,7 +1,8 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# Optional: skip building the WhatsApp bridge (useful for CI/platform testing).
-ARG NANOBOT_BUILD_BRIDGE=1
+# WhatsApp bridge is opt-in. The default image is lean (no Node toolchain).
+# Build with `--build-arg NANOBOT_BUILD_BRIDGE=1` if you need the WhatsApp channel.
+ARG NANOBOT_BUILD_BRIDGE=0
 
 # Install Node.js 20 for the WhatsApp bridge
 RUN if [ "$NANOBOT_BUILD_BRIDGE" = "1" ]; then \
@@ -35,6 +36,11 @@ COPY alembic/ alembic/
 COPY nanobot/ nanobot/
 COPY bridge/ bridge/
 RUN uv pip install --system --no-cache .
+
+# Container entrypoint + first-run secret bootstrap (own layer so editing the
+# scripts doesn't invalidate the dependency install above).
+COPY docker/ docker/
+RUN chmod +x docker/entrypoint.sh docker/bootstrap-secrets.sh
 
 # Build the WhatsApp bridge
 WORKDIR /app/bridge

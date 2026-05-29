@@ -201,7 +201,8 @@ Yes. See [Self-Hosting Guide](SELF_HOSTING.md) for a complete walkthrough.
 
 ```bash
 git pull
-docker compose --env-file .env up -d --build
+docker compose pull   # grab the latest published image
+docker compose up -d
 ```
 
 ### Where do I get help?

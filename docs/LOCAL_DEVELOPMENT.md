@@ -21,8 +21,8 @@ docker compose --env-file .env.local up -d --build postgres redis orchestrator w
 
 Open:
 
-- onboarding surface: `http://localhost:18080`
-- health check: `http://localhost:18080/healthz`
+- onboarding surface: `http://localhost:8080`
+- health check: `http://localhost:8080/healthz`
 
 Stop it with:
 
