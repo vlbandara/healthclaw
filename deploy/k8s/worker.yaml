@@ -1,45 +1,44 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nanobot-worker
+  name: healthclaw-worker
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: nanobot-worker
+      app: healthclaw-worker
   template:
     metadata:
       labels:
-        app: nanobot-worker
+        app: healthclaw-worker
     spec:
       containers:
         - name: worker
-          image: ghcr.io/your-org/nanobot:latest
-          args: ["nanobot", "worker"]
+          image: ghcr.io/vlbandara/healthclaw:latest
+          args: ["healthclaw", "worker"]
           env:
             - name: NANOBOT_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: nanobot-secrets
+                  name: healthclaw-secrets
                   key: database_url
             - name: ARQ_REDIS_URL
               valueFrom:
                 secretKeyRef:
-                  name: nanobot-secrets
+                  name: healthclaw-secrets
                   key: redis_url
             - name: LANGFUSE_PUBLIC_KEY
               valueFrom:
                 secretKeyRef:
-                  name: nanobot-secrets
+                  name: healthclaw-secrets
                   key: langfuse_public_key
             - name: LANGFUSE_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: nanobot-secrets
+                  name: healthclaw-secrets
                   key: langfuse_secret_key
             - name: LANGFUSE_HOST
               valueFrom:
                 secretKeyRef:
-                  name: nanobot-secrets
+                  name: healthclaw-secrets
                   key: langfuse_host
-

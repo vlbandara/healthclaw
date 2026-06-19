@@ -1,38 +1,38 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nanobot-gateway
+  name: healthclaw-gateway
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: nanobot-gateway
+      app: healthclaw-gateway
   template:
     metadata:
       labels:
-        app: nanobot-gateway
+        app: healthclaw-gateway
     spec:
       containers:
         - name: gateway
-          image: ghcr.io/your-org/nanobot:latest
-          args: ["nanobot", "serve", "--host", "0.0.0.0", "--port", "8080"]
+          image: ghcr.io/vlbandara/healthclaw:latest
+          args: ["healthclaw", "serve", "--host", "0.0.0.0", "--port", "8080"]
           ports:
             - containerPort: 8080
           env:
             - name: NANOBOT_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: nanobot-secrets
+                  name: healthclaw-secrets
                   key: database_url
             - name: ARQ_REDIS_URL
               valueFrom:
                 secretKeyRef:
-                  name: nanobot-secrets
+                  name: healthclaw-secrets
                   key: redis_url
             - name: NANOBOT_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: nanobot-secrets
+                  name: healthclaw-secrets
                   key: api_key
           readinessProbe:
             httpGet:
@@ -51,13 +51,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nanobot-gateway
+  name: healthclaw-gateway
 spec:
   selector:
-    app: nanobot-gateway
+    app: healthclaw-gateway
   ports:
     - port: 80
       targetPort: 8080
       protocol: TCP
       name: http
-

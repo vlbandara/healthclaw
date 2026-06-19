@@ -17,7 +17,7 @@ from nanobot.health.spawner import SpawnResult
 from nanobot.health.storage import HealthWorkspace
 
 
-def _payload(*, preferred_channel: str = "telegram") -> dict:
+def _payload(*, preferred_channel: str = "web") -> dict:
     return {
         "phase1": {
             "full_name": "Jane Doe",
@@ -56,12 +56,21 @@ def _payload(*, preferred_channel: str = "telegram") -> dict:
     }
 
 
-def _make_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, HealthWorkspace]:
+def _make_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    whatsapp_enabled: bool = False,
+) -> tuple[TestClient, HealthWorkspace]:
     monkeypatch.delenv("NANOBOT_HEALTH_REGISTRY_URL", raising=False)
     monkeypatch.setenv("NANOBOT_WORKSPACE", str(tmp_path))
     monkeypatch.setenv("HEALTH_VAULT_KEY", "test-health-vault-key")
     monkeypatch.setenv("HEALTH_TELEGRAM_BOT_URL", "https://t.me/example_bot")
     monkeypatch.setenv("HEALTH_WHATSAPP_CHAT_URL", "https://wa.me/15550001111")
+    if whatsapp_enabled:
+        monkeypatch.setenv("HEALTH_ENABLE_WHATSAPP", "true")
+    else:
+        monkeypatch.delenv("HEALTH_ENABLE_WHATSAPP", raising=False)
     monkeypatch.setenv("NANOBOT_HEALTH_REGISTRY_PATH", str(tmp_path / "health-registry.sqlite3"))
     health = HealthWorkspace(tmp_path)
     app = create_app()
@@ -86,6 +95,7 @@ def test_setup_page_and_provider_submission(tmp_path: Path, monkeypatch: pytest.
     assert page.status_code == 200
     assert "Give your companion a place to reach you." in page.text
     assert "Connect Telegram" in page.text
+    assert "Optional for local self-hosting" in page.text
     assert "Scan with WhatsApp" not in page.text
     assert "Timezone" in page.text
 
@@ -143,7 +153,7 @@ def test_setup_activate_with_telegram(tmp_path: Path, monkeypatch: pytest.Monkey
         f"/api/setup/{token}/channels/telegram",
         json={"bot_token": "123:abc"},
     ).status_code == 200
-    assert client.post(f"/api/setup/{token}/profile", json=_payload()).status_code == 200
+    assert client.post(f"/api/setup/{token}/profile", json=_payload(preferred_channel="telegram")).status_code == 200
 
     resp = client.post(f"/api/setup/{token}/activate")
     assert resp.status_code == 200
@@ -178,7 +188,7 @@ def test_signup_reuses_valid_unfinished_setup_token(tmp_path: Path, monkeypatch:
 
 
 def test_setup_activate_with_whatsapp_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    client, _ = _make_client(tmp_path, monkeypatch)
+    client, _ = _make_client(tmp_path, monkeypatch, whatsapp_enabled=True)
     token = "setup-whatsapp-primary-token"
     health = _setup_session_health(tmp_path, token)
     health.create_setup_session_with_token(token)
@@ -310,7 +320,7 @@ def test_setup_wearables_connect_and_sync(tmp_path: Path, monkeypatch: pytest.Mo
     assert "ow-user-123" not in ciphertext
 
 
-def test_setup_rejects_activation_without_connected_channel(
+def test_setup_activate_with_browser_chat_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -327,15 +337,45 @@ def test_setup_rejects_activation_without_connected_channel(
         f"/api/setup/{token}/provider",
         json={"provider": "minimax", "api_key": "minimax-secret-key"},
     ).status_code == 200
+    monkeypatch.setattr(client.app.state.registry, "get_by_setup_token", AsyncMock(return_value=None))
+    monkeypatch.setattr(client.app.state.registry, "set_container", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        client.app.state.spawner,
+        "spawn_instance",
+        lambda **_kwargs: SpawnResult(
+            container_id="ctr-test-web-123",
+            volume_name="vol-test-web-123",
+            workspace_path=str(tmp_path / "spawned-instance"),
+        ),
+    )
     assert client.post(f"/api/setup/{token}/profile", json=_payload()).status_code == 200
 
     resp = client.post(f"/api/setup/{token}/activate")
-    assert resp.status_code == 400
-    assert "Connect Telegram or WhatsApp before continuing." in resp.json()["detail"]
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "active"
+    assert resp.json()["preferredChannel"] == "web"
+    assert resp.json()["channelLinks"]["web"] == f"/chat/{token}"
+    profile = json.loads((tmp_path / "health" / "profile.json").read_text(encoding="utf-8"))
+    assert profile["preferred_channel"] == "web"
+
+
+def test_setup_status_hides_whatsapp_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _ = _make_client(tmp_path, monkeypatch)
+    token = "setup-whatsapp-hidden-token"
+    health = _setup_session_health(tmp_path, token)
+    health.create_setup_session_with_token(token)
+
+    status_resp = client.get(f"/api/setup/{token}/status")
+    assert status_resp.status_code == 200
+    assert status_resp.json()["whatsappEnabled"] is False
+    assert status_resp.json()["channels"]["whatsapp"]["status"] == "disabled"
+
+    qr_resp = client.get(f"/api/setup/{token}/channels/whatsapp/qr")
+    assert qr_resp.status_code == 404
 
 
 def test_setup_whatsapp_status_uses_bridge_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    client, _ = _make_client(tmp_path, monkeypatch)
+    client, _ = _make_client(tmp_path, monkeypatch, whatsapp_enabled=True)
     token = "setup-whatsapp-token"
     health = _setup_session_health(tmp_path, token)
     health.create_setup_session_with_token(token)

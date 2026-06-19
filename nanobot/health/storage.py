@@ -106,6 +106,11 @@ def _default_setup_payload(token: str, *, ttl_hours: int) -> dict[str, Any]:
             "api_key_masked": "",
         },
         "channels": {
+            "web": {
+                "connected": True,
+                "validated_at": _isoformat(now),
+                "chat_url": "",
+            },
             "telegram": {
                 "connected": False,
                 "validated_at": None,
@@ -502,8 +507,8 @@ class HealthWorkspace:
 
         if preferred_channel is not None:
             cleaned = str(preferred_channel or "").strip().lower()
-            if cleaned not in {"telegram", "whatsapp"}:
-                raise ValueError("preferred_channel must be either 'telegram' or 'whatsapp'.")
+            if cleaned not in {"web", "telegram", "whatsapp"}:
+                raise ValueError("preferred_channel must be 'web', 'telegram', or 'whatsapp'.")
             profile["preferred_channel"] = cleaned
             profile.setdefault("channel_binding", {})["preferred_channel"] = cleaned
             changed["preferred_channel"] = cleaned

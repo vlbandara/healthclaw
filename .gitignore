@@ -12,6 +12,9 @@
 nanobot-state/
 whatsapp-auth/
 
+# Internal status briefs (not for public repo)
+docs/weekly-brief-*.md
+
 # Python
 *.pyc
 *.pyo

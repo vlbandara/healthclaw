@@ -168,11 +168,11 @@ function renderUsernameSuggestions() {
 }
 
 function selectedPrimaryChannel() {
-  return field("preferred_channel")?.value || "telegram";
+  return field("preferred_channel")?.value || "web";
 }
 
 function primaryChannelLabel() {
-  return "Telegram";
+  return selectedPrimaryChannel() === "telegram" ? "Telegram" : "Browser chat";
 }
 
 function setupIsActive() {
@@ -182,14 +182,14 @@ function setupIsActive() {
 function setPrimaryChannel() {
   const hidden = field("preferred_channel");
   if (hidden) {
-    hidden.value = "telegram";
+    hidden.value = "web";
   }
   updateFinishSummary();
 }
 
 if (telegramBadge) {
-  telegramBadge.textContent = "Primary";
-  telegramBadge.classList.remove("channel-badge--secondary");
+  telegramBadge.textContent = "Optional";
+  telegramBadge.classList.add("channel-badge--secondary");
 }
 
 function updateFinishSummary() {
@@ -205,9 +205,9 @@ function updateFinishSummary() {
   const channelState = (setupState?.channels || {}).telegram || {};
   finishSummary.textContent = channelState.connected
     ? setupIsActive()
-      ? `Telegram is live. The starting tone is ${toneLabel}.`
-      : "Telegram is linked. Finish setup and wake your companion before replies start."
-    : "Connect Telegram first, then we can continue.";
+      ? `Browser chat and Telegram are live. The starting tone is ${toneLabel}.`
+      : "Telegram is linked. Finish setup to start browser chat and Telegram replies."
+    : `Browser chat is ready. The starting tone is ${toneLabel}.`;
   if (finishTimezone) {
     finishTimezone.textContent = `Timezone: ${typedTimezone()}. You can change it later in chat if your schedule shifts.`;
   }
@@ -351,16 +351,22 @@ function renderCompletion(preferredChannel, links) {
     // Ignore storage failures.
   }
   completionActions.innerHTML = "";
-  orderChannelLinks("telegram", { telegram: (links || {}).telegram || "" }).forEach((name) => {
+  const token = form?.dataset.setupToken || "";
+  const handoffLinks = {
+    web: (links || {}).web || (token ? `/chat/${encodeURIComponent(token)}` : ""),
+    telegram: (links || {}).telegram || "",
+  };
+  orderChannelLinks("web", handoffLinks).forEach((name) => {
     const anchor = document.createElement("a");
-    anchor.href = links[name];
-    anchor.target = "_blank";
-    anchor.rel = "noopener";
+    anchor.href = handoffLinks[name];
+    if (name !== "web") {
+      anchor.target = "_blank";
+      anchor.rel = "noopener";
+    }
     anchor.className = "channel-link";
-    anchor.textContent = "Open Telegram";
+    anchor.textContent = name === "telegram" ? "Open Telegram" : "Open browser chat";
     completionActions.appendChild(anchor);
   });
-  const token = form?.dataset.setupToken || "";
   const displayName = (form?.dataset.displayName || "").trim();
   const tone = form.querySelector('input[name="tone_style"]:checked')?.value || "gentle";
   const toneLabel = {
@@ -370,7 +376,7 @@ function renderCompletion(preferredChannel, links) {
   }[tone] || "warmly";
   if (completionGreeting) {
     const who = displayName || "there";
-    completionGreeting.textContent = `Hey ${who}. I’m awake and I’ll show up in Telegram ${toneLabel}.`;
+    completionGreeting.textContent = `Hey ${who}. I’m awake in browser chat ${toneLabel}.`;
   }
   if (webChatLink && token) {
     webChatLink.href = `/chat/${encodeURIComponent(token)}`;
@@ -447,7 +453,7 @@ function renderTelegramState(telegram) {
           : "Telegram is linked. Activate the companion to start replies.",
     );
   } else {
-    setInlineStatus(telegramSummary, "Paste a BotFather token to connect Telegram.");
+    setInlineStatus(telegramSummary, "Optional: paste a BotFather token to connect Telegram.");
   }
 }
 
@@ -637,10 +643,6 @@ async function handleNext() {
       const hasTelegramToken = field("telegram_bot_token").value.trim();
       if (hasTelegramToken && !((setupState?.channels || {}).telegram || {}).connected) {
         await saveTelegram();
-      }
-      const telegramMeta = ((setupState?.channels || {}).telegram) || {};
-      if (!telegramMeta.connected) {
-        throw new Error("Connect Telegram before you continue.");
       }
       currentStep += 1;
       updateStep();

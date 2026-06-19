@@ -130,6 +130,49 @@ def test_onboard_help_shows_workspace_and_config_options():
     assert "--dir" not in stripped_output
 
 
+def test_init_local_generates_safe_env_without_shell_secret(tmp_path, monkeypatch):
+    env_path = tmp_path / ".env.local.test"
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-live-shell-secret")
+
+    result = runner.invoke(app, ["init-local", "--env-file", str(env_path)])
+
+    assert result.exit_code == 0
+    content = env_path.read_text(encoding="utf-8")
+    assert "HEALTH_VAULT_KEY=" in content
+    assert "POSTGRES_PASSWORD=" in content
+    assert "NANOBOT_AGENTS__DEFAULTS__PROVIDER=ollama" in content
+    assert "HEALTH_ENABLE_WHATSAPP=false" in content
+    assert "sk-live-shell-secret" not in content
+
+
+def test_init_local_refuses_existing_env_without_force(tmp_path):
+    env_path = tmp_path / ".env.local.test"
+    env_path.write_text("EXISTING=true\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["init-local", "--env-file", str(env_path)])
+
+    assert result.exit_code == 1
+    assert "already exists" in result.stdout
+    assert env_path.read_text(encoding="utf-8") == "EXISTING=true\n"
+
+
+def test_doctor_fails_missing_env_file(tmp_path):
+    result = runner.invoke(
+        app,
+        [
+            "doctor",
+            "--env-file",
+            str(tmp_path / "missing.env"),
+            "--compose-file",
+            str(tmp_path / "missing-compose.yml"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Env file missing" in result.stdout
+    assert "HEALTH_VAULT_KEY is missing" in result.stdout
+
+
 def test_onboard_interactive_discard_does_not_save_or_create_workspace(mock_paths, monkeypatch):
     config_file, workspace_dir, _ = mock_paths
 

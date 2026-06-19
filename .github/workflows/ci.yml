@@ -46,19 +46,20 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run Ruff
-        run: uv run ruff check nanobot tests
+        run: uv run --extra dev ruff check nanobot tests
 
       - name: Build Python package
         run: uv build
 
-      - name: Validate docker compose config
-        run: docker compose config
+      - name: Validate Docker Compose config
+        run: docker compose --env-file .env.example config >/dev/null
 
       - name: Build bridge
         working-directory: bridge
         run: |
           npm ci
           npm run build
+          npm audit --audit-level=critical
 
       - name: Smoke evals
         run: uv run nanobot eval run --dataset smoke
@@ -87,4 +88,4 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run tests
-        run: uv run pytest -q
+        run: uv run --extra dev pytest -q

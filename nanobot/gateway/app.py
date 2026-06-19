@@ -83,7 +83,7 @@ def _require_api_key(authorization: str | None = Header(default=None)) -> None:
 
 def create_app(config: Config) -> FastAPI:
     limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
-    app = FastAPI(title="nanobot gateway", version="0.1")
+    app = FastAPI(title="Healthclaw gateway", version="0.1")
 
     pg_pool: asyncpg.Pool | None = None
     templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "health" / "templates"))
@@ -328,4 +328,3 @@ def create_app(config: Config) -> FastAPI:
         return StreamingResponse(_gen(), media_type="text/event-stream")
 
     return app
-

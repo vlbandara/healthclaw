@@ -21,7 +21,8 @@ x-common-config: &common-config
     HEALTH_ONBOARDING_BASE_URL: ${HEALTH_ONBOARDING_BASE_URL:-}
     # Telegram bot configuration
     HEALTH_TELEGRAM_BOT_URL: ${HEALTH_TELEGRAM_BOT_URL:-}
-    # WhatsApp bridge for WhatsApp channel support
+    # WhatsApp bridge is experimental and hidden unless explicitly enabled.
+    HEALTH_ENABLE_WHATSAPP: ${HEALTH_ENABLE_WHATSAPP:-false}
     HEALTH_WHATSAPP_CHAT_URL: ${HEALTH_WHATSAPP_CHAT_URL:-}
     HEALTH_WHATSAPP_BRIDGE_URL: ${HEALTH_WHATSAPP_BRIDGE_URL:-ws://whatsapp-bridge:3001}
     WHATSAPP_BRIDGE_TOKEN: ${WHATSAPP_BRIDGE_TOKEN:-}

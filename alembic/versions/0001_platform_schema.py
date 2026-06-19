@@ -7,7 +7,6 @@ Create Date: 2026-04-20
 
 from alembic import op
 
-
 # revision identifiers, used by Alembic.
 revision = "0001_platform_schema"
 down_revision = None

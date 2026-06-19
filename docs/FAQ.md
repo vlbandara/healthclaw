@@ -61,25 +61,27 @@ Docker provides:
 - Easy dependency management
 - Simple deployment and updates
 
-The alternative (bare metal) requires manually managing Python dependencies and is not recommended for multi-user setups.
+The alternative (bare metal) requires manually managing Python dependencies and is not recommended for the public self-host beta.
 
 ### Can I use Healthclaw without Docker?
 
 Yes, but:
 - Single-user mode only
 - Manual dependency installation
-- No family multi-tenancy
+- Less coverage from the documented setup path
 
 For local dev without Docker, see [docs/LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md).
 
 ### Do I need a Telegram bot?
 
-No. Telegram is the default and easiest channel, but you can use:
+No. Browser chat is the default first-run channel. Telegram is optional if you want chat-app delivery. The inherited channel system also includes:
+
 - Discord
 - Slack
-- WhatsApp (via bridge)
 - Matrix
 - Email
+
+WhatsApp is experimental and hidden by default; see [WhatsApp Experimental](WHATSAPP_EXPERIMENTAL.md).
 
 See [Channel Plugin Guide](CHANNEL_PLUGIN_GUIDE.md) for setup.
 
@@ -181,9 +183,9 @@ sudo usermod -aG docker $USER
 # Log out and back in
 ```
 
-### Can't add family members
+### Can I add family members?
 
-Ensure `NANOBOT_MULTI_TENANT=true` is set in your `.env`. Each new user needs to message the bot once to trigger workspace creation.
+Hosted multi-tenant/family mode is deferred for the public self-host beta. Start with one local companion workspace, then track family/workspace isolation work through the roadmap.
 
 ---
 

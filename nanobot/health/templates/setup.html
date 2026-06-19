@@ -109,9 +109,9 @@
           <h1>Give your companion a place to reach you.</h1>
           <p class="lede" id="setup-lede">
             {% if display_name %}
-              {{ display_name }}, connect Telegram, choose the vibe, and you're in.
+              {{ display_name }}, choose the local setup, optionally connect Telegram, and you're in.
             {% else %}
-              Connect Telegram, choose the vibe, then turn it on.
+              Choose the local setup, optionally connect Telegram, then turn it on.
             {% endif %}
           </p>
         </header>
@@ -121,8 +121,9 @@
           data-setup-token="{{ setup_token }}"
           data-display-name="{{ display_name|e }}"
           data-telegram-url="{{ channel_links.telegram or '' }}"
+          data-whatsapp-enabled="{{ 'true' if whatsapp_enabled else 'false' }}"
         >
-          <input type="hidden" name="preferred_channel" value="telegram" />
+          <input type="hidden" name="preferred_channel" value="web" />
 
           <!-- Step 0: AI Provider -->
           <section class="step active" data-step="0">
@@ -181,7 +182,7 @@
           <!-- Step 1: Telegram -->
           <section class="step" data-step="1">
             <h2 class="step-heading">Connect Telegram</h2>
-            <p class="step-copy">Set up your Telegram bot once here. You can add other channels later without redoing the rest of setup.</p>
+            <p class="step-copy">Optional for local self-hosting. You can start in the browser now and add Telegram when you want chat-app delivery.</p>
 
             <section class="channel-card channel-card--setup active">
               <div class="channel-card__header">
@@ -189,7 +190,7 @@
                   <h3>Telegram</h3>
                   <p class="helper">Connect a bot once here. Replies start after you finish setup and wake your companion.</p>
                 </div>
-                <span class="channel-badge" id="telegram-badge">Primary</span>
+                <span class="channel-badge" id="telegram-badge">Optional</span>
               </div>
 
               <div class="channel-compact-status" id="telegram-connected-state" hidden>
@@ -260,7 +261,7 @@
                   <span class="promise-icon">&#10024;</span>
                   <div>
                     <strong>Companion wakes up</strong>
-                    <p>After activation, your companion will show up in Telegram.</p>
+                  <p>After activation, your companion opens in browser chat. Telegram works too if you connect it.</p>
                   </div>
                 </div>
                 <div class="promise-item">
@@ -274,7 +275,7 @@
                   <span class="promise-icon">&#128737;&#65039;</span>
                   <div>
                     <strong>Private &amp; secure</strong>
-                    <p>All chats are encrypted and stay between you and your bot.</p>
+                  <p>Runtime state stays in your self-hosted Healthclaw workspace.</p>
                   </div>
                 </div>
               </div>
@@ -364,9 +365,9 @@
           <!-- Step 4: Activate -->
           <section class="step" data-step="4">
             <h2 class="step-heading">Turn it on</h2>
-            <p class="step-copy">We'll switch everything on and send you straight into Telegram. Your timezone is summarized here so you can catch it before activation.</p>
+            <p class="step-copy">We'll switch everything on and send you into the browser chat. Your timezone is summarized here so you can catch it before activation.</p>
             <div class="summary-card">
-              <p id="finish-summary" class="helper">Connect Telegram first, then continue.</p>
+              <p id="finish-summary" class="helper">Browser chat is ready for activation.</p>
               <p id="finish-timezone" class="helper">Timezone will follow your local setup.</p>
             </div>
           </section>
@@ -384,7 +385,7 @@
           <div class="completion__companion">{{ companion('happy', 'companion-wrap--sm') }}</div>
           <h2>I'm here.</h2>
           <p id="completion-greeting" class="completion__greeting"></p>
-          <p class="completion__hint">Open your primary chat and say hi. The first version of your companion is already awake.</p>
+          <p class="completion__hint">Open browser chat and say hi. The first version of your companion is already awake.</p>
           <div id="completion-actions" class="handoff-actions"></div>
           <p class="completion__chat-link-wrap">
             <a id="web-chat-link" class="channel-link secondary-link" href="#" hidden>Chat in the browser</a>

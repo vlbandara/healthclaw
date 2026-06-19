@@ -1,77 +1,88 @@
 # Self-Hosting
 
-This guide covers a generic single-host deployment of **Healthclaw** on your own server.
-
-Healthclaw is a fork of `nanobot`. The public brand is Healthclaw, but the runtime identifiers remain `nanobot` in v0.2 for compatibility.
+This guide covers the supported public launch posture: a single-host Healthclaw self-host beta. Hosted multi-tenant operation is deferred.
 
 ## Prerequisites
 
-- Linux host with Docker and the Compose plugin
-- 4 GB RAM recommended for small deployments
-- Ollama on the host if you want local models
-- a Telegram bot token if you want Telegram onboarding or chat
+- Linux host or local machine with Docker and the Compose plugin
+- 4 GB RAM minimum; 8 GB+ recommended for Gemma 7B
+- Ollama on the host for the private local-model path
+- Optional Telegram bot token if you want chat-app delivery
 
 ## Clone and Configure
 
 ```bash
 git clone https://github.com/vlbandara/healthclaw.git
 cd healthclaw
-cp .env.example .env
+uv run healthclaw init-local --env-file .env.local
 ```
 
-Set at least:
+For a server, edit `.env.local` after generation:
 
 ```env
-NANOBOT_AGENTS__DEFAULTS__PROVIDER=ollama
-NANOBOT_AGENTS__DEFAULTS__MODEL=gemma:7b
-OLLAMA_API_BASE=http://host.docker.internal:11434
-TELEGRAM_BOT_TOKEN=123456789:your-token
-HEALTH_VAULT_KEY=generate-a-fernet-key
-POSTGRES_PASSWORD=change-me
 DOMAIN=your-domain.example
 HEALTH_ONBOARDING_BASE_URL=https://your-domain.example
+CADDY_HTTP_PORT=80
+CADDY_HTTPS_PORT=443
+```
+
+Do not paste raw `docker compose config` output into issues or chats; it can include interpolated secrets. Use:
+
+```bash
+uv run healthclaw doctor --env-file .env.local
 ```
 
 ## Start the Stack
 
+Local browser-first setup:
+
 ```bash
-docker compose --env-file .env up -d --build postgres redis orchestrator worker caddy
+docker compose --env-file .env.local up -d --build postgres redis orchestrator worker
+```
+
+Server with Caddy:
+
+```bash
+docker compose --env-file .env.local up -d --build postgres redis orchestrator worker caddy
 ```
 
 Validate:
 
 ```bash
-docker compose ps
+uv run healthclaw doctor --env-file .env.local
 curl -fsS http://localhost:18080/healthz
 ```
-
-## Local Model Notes
-
-If Ollama runs on the host, make sure the containers can reach it.
-
-Common options:
-
-- `OLLAMA_API_BASE=http://host.docker.internal:11434`
-- on Linux, add host gateway mapping if needed
 
 ## Data and Compatibility
 
 Persistent runtime data remains under:
 
-- `~/.nanobot`
-- `~/.nanobot/workspace`
-- `~/.nanobot/whatsapp-auth`
+- `~/.nanobot` by default
+- the generated `NANOBOT_STATE_DIR` for local development
+- `memory/`, `health/`, and workspace files inside that state directory
 
-The CLI remains:
+CLI entrypoints:
 
 ```bash
+healthclaw
 nanobot
 ```
 
+## Optional Channels
+
+Browser chat is the default first-run channel. Telegram can be connected during setup. WhatsApp is hidden for the public launch and remains experimental behind:
+
+```env
+HEALTH_ENABLE_WHATSAPP=true
+```
+
+See [WhatsApp Experimental](WHATSAPP_EXPERIMENTAL.md) before enabling it.
+
 ## Security Notes
 
-- never commit real `.env` files
-- use a strong `POSTGRES_PASSWORD`
-- protect `~/.nanobot`
-- expose only the reverse-proxy ports you actually need
-- prefer HTTPS for any internet-facing deployment
+- Never commit real `.env` files, tokens, provider credentials, or compose output with secrets.
+- Rotate any key that appears in terminal logs, screenshots, chat, or issues.
+- Use a strong `POSTGRES_PASSWORD` and protect the state directory.
+- Expose only the reverse-proxy ports you actually need.
+- Prefer HTTPS for any internet-facing deployment.
+- Healthclaw is wellbeing support, not a medical device or emergency-response system.

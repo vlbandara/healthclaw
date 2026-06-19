@@ -51,7 +51,7 @@ Channels are how users communicate with Healthclaw:
 | Telegram | Bot API | Requires bot token from @BotFather |
 | Discord | WebSocket | Requires bot token + Message Content intent |
 | Slack | Socket Mode | No public URL needed |
-| WhatsApp | WebSocket bridge | QR code login |
+| WhatsApp | WebSocket bridge | Experimental; hidden unless `HEALTH_ENABLE_WHATSAPP=true` |
 | Matrix | Homeserver API | Access token based |
 | Email | IMAP/SMTP | Polls inbox, sends responses |
 
@@ -138,11 +138,11 @@ workspace/<user-id>/
     └── .git/            # Version history for memory files
 ```
 
-The workspace is stored in a dedicated Docker container, keeping data fully isolated between users.
+For the public self-host beta, the primary path is one local companion workspace with browser chat. Some inherited platform code can run multiple workspaces, but hosted multi-tenant operation is not the launch target.
 
-## Multi-Tenancy
+## Workspace Isolation
 
-When `NANOBOT_MULTI_TENANT=true`:
+When experimental multi-workspace routing is enabled:
 
 1. User sends "Hi" → Gateway creates a new isolated Docker workspace
 2. Each user has their own container with separate:
@@ -151,7 +151,7 @@ When `NANOBOT_MULTI_TENANT=true`:
    - AI context
    - Configuration
 
-No data crosses between workspaces. Family members cannot see each other's conversations or memory.
+The intended invariant is that no data crosses between workspaces. Treat this as experimental until the family/multi-tenant path is revalidated.
 
 ## Data Flow: Message Received
 
@@ -202,9 +202,9 @@ nanobot/
 
 ## Security Notes
 
-- Each workspace runs in an isolated Docker container
+- Each activated workspace can run in an isolated Docker container
 - Secrets are stored in the health vault, encrypted with Fernet
-- Family mode ensures zero data leakage between users
+- Multi-workspace isolation is experimental for this launch
 - Local Ollama setup means no data ever leaves your machine
 
 ## Related Documentation

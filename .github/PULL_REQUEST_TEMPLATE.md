@@ -4,11 +4,11 @@ Describe what changed and why.
 
 ## Testing
 
-- [ ] `uv run ruff check nanobot tests`
-- [ ] `uv run pytest -q`
+- [ ] `uv run --extra dev ruff check nanobot tests`
+- [ ] `uv run --extra dev pytest -q`
 - [ ] `uv build`
-- [ ] `docker compose config`
-- [ ] `cd bridge && npm ci && npm run build`
+- [ ] `uv run healthclaw doctor --env-file .env.local`
+- [ ] `cd bridge && npm ci && npm run build && npm audit --audit-level=critical`
 
 ## Compatibility
 

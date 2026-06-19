@@ -102,6 +102,7 @@ dev = [
 
 [project.scripts]
 nanobot = "nanobot.cli.commands:app"
+healthclaw = "nanobot.cli.commands:app"
 
 [build-system]
 requires = ["hatchling"]

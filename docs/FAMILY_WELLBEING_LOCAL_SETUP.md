@@ -1,5 +1,7 @@
 # Family Wellbeing Companion Setup (Local + Private)
 
+> Experimental: hosted/family multi-tenant operation is deferred for the public self-host beta. Use the main [Getting Started](GETTING_STARTED.md) guide for the supported single-workspace path.
+
 Healthclaw is architected from the ground up to isolate contexts. This means you can onboard your entire family into the system using a single host, and **each family member will securely receive their own private assistant container** with no memory bleed between them. 
 
 Coupled with Google's localized Gemma model via Ollama, this provides a highly private, subscription-free, family-scale setup.
@@ -53,7 +55,7 @@ TELEGRAM_BOT_TOKEN=123456789:YOUR_TOKEN_HERE
 Execute Healthclaw's local development stack right from the directory:
 
 ```bash
-LOCAL_DEV=1 docker compose --env-file .env.local up -d --build postgres redis orchestrator worker whatsapp-bridge
+LOCAL_DEV=1 docker compose --env-file .env.local up -d --build postgres redis orchestrator worker
 ```
 
 ## 5. Onboarding the Family

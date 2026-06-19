@@ -439,8 +439,9 @@ def _load_health_instance_config_template() -> dict[str, Any]:
 def _channel_links() -> dict[str, str]:
     links = {
         "telegram": os.environ.get("HEALTH_TELEGRAM_BOT_URL", "").strip(),
-        "whatsapp": os.environ.get("HEALTH_WHATSAPP_CHAT_URL", "").strip(),
     }
+    if _env_flag("HEALTH_ENABLE_WHATSAPP"):
+        links["whatsapp"] = os.environ.get("HEALTH_WHATSAPP_CHAT_URL", "").strip()
     return {name: url for name, url in links.items() if url}
 
 
@@ -599,6 +600,9 @@ def _current_channel_links(
         "telegram": telegram_link,
         "whatsapp": whatsapp_link,
     }
+    token = str(setup.get("token") or "").strip()
+    if token:
+        links["web"] = f"/chat/{token}"
     return {name: url for name, url in links.items() if url}
 
 
@@ -608,6 +612,8 @@ def _sync_whatsapp_state(
     *,
     fallback_chat_url: str = "",
 ) -> None:
+    if not _env_flag("HEALTH_ENABLE_WHATSAPP"):
+        return
     if not snapshot:
         return
     status = snapshot.get("status") or "waiting"
@@ -631,7 +637,9 @@ def _setup_status_payload(
     fallback_links: dict[str, str],
     bridge_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    _sync_whatsapp_state(health, bridge_snapshot, fallback_chat_url=fallback_links.get("whatsapp", ""))
+    whatsapp_enabled = _env_flag("HEALTH_ENABLE_WHATSAPP")
+    if whatsapp_enabled:
+        _sync_whatsapp_state(health, bridge_snapshot, fallback_chat_url=fallback_links.get("whatsapp", ""))
     setup = health.load_setup()
     if not setup:
         raise HTTPException(status_code=404, detail="Setup session not found.")
@@ -641,10 +649,19 @@ def _setup_status_payload(
     provider["has_api_key"] = bool(secrets_payload.get("provider", {}).get("api_key"))
 
     channels = dict(setup.get("channels", {}))
+    web = dict(channels.get("web", {}))
+    web["connected"] = True
+    web["chat_url"] = f"/chat/{setup.get('token')}" if setup.get("token") else ""
     telegram = dict(channels.get("telegram", {}))
     whatsapp = dict(channels.get("whatsapp", {}))
     telegram["has_token"] = bool(secrets_payload.get("telegram", {}).get("bot_token"))
-    whatsapp["chat_url"] = whatsapp.get("chat_url") or ((bridge_snapshot or {}).get("chat_url") or "")
+    if whatsapp_enabled:
+        whatsapp["chat_url"] = whatsapp.get("chat_url") or ((bridge_snapshot or {}).get("chat_url") or "")
+    else:
+        whatsapp["connected"] = False
+        whatsapp["status"] = "disabled"
+        whatsapp["chat_url"] = ""
+    channels["web"] = web
     channels["telegram"] = telegram
     channels["whatsapp"] = whatsapp
 
@@ -661,6 +678,7 @@ def _setup_status_payload(
         "profile": health.load_profile_draft_submission(secret=secret) or {},
         "channelLinks": links,
         "activationReady": bool(provider_ready and has_connected_channel),
+        "whatsappEnabled": whatsapp_enabled,
     }
 
 
@@ -672,6 +690,13 @@ def _env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
 
 
 class _JsonFormatter(logging.Formatter):
@@ -893,9 +918,10 @@ def create_app() -> FastAPI:
     _configure_logging()
     workspace_root = _resolve_workspace()
     channel_links = _channel_links()
+    whatsapp_enabled = _env_flag("HEALTH_ENABLE_WHATSAPP")
     monitor = WhatsAppBridgeMonitor(
         bridge_url=get_whatsapp_bridge_url(),
-        bridge_token=get_whatsapp_bridge_token(),
+        bridge_token=get_whatsapp_bridge_token() if whatsapp_enabled else "",
         fallback_chat_url=channel_links.get("whatsapp", ""),
         on_status=lambda _payload: None,
     )
@@ -903,12 +929,14 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await _cleanup_stale_setup_sessions(app)
-        await monitor.start()
+        if whatsapp_enabled:
+            await monitor.start()
         app.state.instance_monitor_task = asyncio.create_task(_container_health_monitor(app))
         try:
             yield
         finally:
-            await monitor.stop()
+            if whatsapp_enabled:
+                await monitor.stop()
             task = getattr(app.state, "instance_monitor_task", None)
             if task is not None:
                 task.cancel()
@@ -917,7 +945,7 @@ def create_app() -> FastAPI:
                 except Exception:
                     pass
 
-    app = FastAPI(title="nanobot health onboarding", lifespan=lifespan)
+    app = FastAPI(title="Healthclaw self-host setup", lifespan=lifespan)
     app.state.workspace_root = workspace_root
     app.state.health_secret = get_health_vault_secret()
     app.state.channel_links = channel_links
@@ -925,6 +953,7 @@ def create_app() -> FastAPI:
     app.state.spawner = HealthInstanceSpawner()
     app.state.runtime_metrics = _runtime_metrics_state()
     app.state.whatsapp_monitor = monitor
+    app.state.whatsapp_enabled = whatsapp_enabled
 
     template_dir = Path(__file__).with_name("templates")
     static_dir = Path(__file__).with_name("static")
@@ -1129,6 +1158,7 @@ def create_app() -> FastAPI:
                 "setup": setup,
                 "channel_links": app.state.channel_links,
                 "provider_choices": PROVIDER_CHOICES,
+                "whatsapp_enabled": app.state.whatsapp_enabled,
             },
         )
 
@@ -1314,6 +1344,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/setup/{setup_token}/channels/whatsapp/qr")
     async def setup_whatsapp_qr(setup_token: str) -> JSONResponse:
+        if not app.state.whatsapp_enabled:
+            raise HTTPException(status_code=404, detail="WhatsApp setup is not enabled on this host.")
         health = _health_for_setup_token(app, setup_token)
         setup = health.validate_setup_token(setup_token)
         if not setup:
@@ -1335,6 +1367,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/setup/{setup_token}/channels/whatsapp/status")
     async def setup_whatsapp_status(setup_token: str) -> JSONResponse:
+        if not app.state.whatsapp_enabled:
+            raise HTTPException(status_code=404, detail="WhatsApp setup is not enabled on this host.")
         health = _health_for_setup_token(app, setup_token)
         setup = health.validate_setup_token(setup_token)
         if not setup:
@@ -1372,7 +1406,7 @@ def create_app() -> FastAPI:
         )
         connected_channels = _connected_setup_channels(payload)
         if not connected_channels:
-            raise HTTPException(status_code=400, detail="Connect Telegram or WhatsApp before continuing.")
+            raise HTTPException(status_code=400, detail="Use browser chat or connect Telegram before continuing.")
         submission = health.load_profile_draft_submission(secret=app.state.health_secret)
         if not submission:
             submission = _default_onboarding_submission(setup_payload=payload)
@@ -1454,7 +1488,8 @@ def create_app() -> FastAPI:
             pass
         spawn = None
         warnings: list[str] = list(activation_warnings)
-        if not os.environ.get("MINIMAX_API_KEY", "").strip():
+        provider_name = str((payload.get("provider") or {}).get("provider") or "").strip().lower()
+        if provider_name == "minimax" and not os.environ.get("MINIMAX_API_KEY", "").strip():
             warnings.append("MINIMAX_API_KEY is not set; the coach may not be able to reply.")
         try:
             health_metrics.spawn_attempts.inc()
