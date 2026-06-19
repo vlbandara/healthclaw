@@ -1,0 +1,23 @@
+# Non-reformatting hooks only. We intentionally do NOT run `ruff format`,
+# trailing-whitespace, or end-of-file-fixer so existing files are not churned.
+# The ruff hook uses the project's own ruff (via uv) so it matches CI exactly.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint, matches CI)
+        entry: uv run --extra dev ruff check nanobot tests
+        language: system
+        pass_filenames: false
+        types_or: [python]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: detect-private-key

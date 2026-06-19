@@ -18,9 +18,22 @@ For v0.2 compatibility, the runtime identifiers still use `nanobot` in code, CLI
 git clone https://github.com/vlbandara/healthclaw.git
 cd healthclaw
 uv sync --all-extras
+uv run --extra dev pre-commit install   # optional: run lint/safety checks on each commit
 ```
 
-Useful commands:
+Common tasks are wrapped in the [`Makefile`](Makefile) — run `make help` to list them:
+
+```bash
+make install   # uv sync --all-extras
+make lint      # ruff check nanobot tests
+make test      # pytest -q
+make cov       # pytest with coverage
+make bridge    # build the WhatsApp bridge
+make doctor    # local environment diagnostics
+make precommit # install + run pre-commit on all files
+```
+
+Or run the underlying commands directly:
 
 ```bash
 uv run --extra dev ruff check nanobot tests

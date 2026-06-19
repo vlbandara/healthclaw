@@ -15,6 +15,7 @@ Healthclaw turns the lightweight `nanobot` agent core into a calmer, more opinio
 [![Python ≥3.11](https://img.shields.io/badge/python-%E2%89%A53.11-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![CI](https://github.com/vlbandara/healthclaw/actions/workflows/ci.yml/badge.svg)](https://github.com/vlbandara/healthclaw/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/vlbandara/healthclaw/branch/main/graph/badge.svg)](https://codecov.io/gh/vlbandara/healthclaw)
 [![Forked from nanobot](https://img.shields.io/badge/forked%20from-nanobot-1f6feb)](https://github.com/HKUDS/nanobot)
 
 </div>
@@ -24,6 +25,14 @@ Healthclaw turns the lightweight `nanobot` agent core into a calmer, more opinio
 > Healthclaw is a fork of [nanobot](https://github.com/HKUDS/nanobot), adapted for a privacy-first wellbeing companion experience.
 > The public product name is **Healthclaw**.
 > For v0.2 compatibility, some internal identifiers still use `nanobot`, including the Python package, CLI command, config paths, and `NANOBOT_*` environment variables.
+
+## What You'll See
+
+After `healthclaw init-local` and starting the stack, the companion greets you in the browser — no SaaS account, running entirely on your machine:
+
+<div align="center">
+  <img src="docs/assets/healthclaw_app_landing.png" alt="Healthclaw browser companion landing screen" width="760" />
+</div>
 
 ## What It Is
 

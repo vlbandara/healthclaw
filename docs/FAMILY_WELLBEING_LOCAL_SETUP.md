@@ -1,8 +1,10 @@
 # Family Wellbeing Companion Setup (Local + Private)
 
-> Experimental: hosted/family multi-tenant operation is deferred for the public self-host beta. Use the main [Getting Started](GETTING_STARTED.md) guide for the supported single-workspace path.
+> [!WARNING]
+> **Experimental — not part of the supported self-host beta.**
+> Hosted/family multi-tenant operation is **deferred** for the public self-host beta and is not yet validated for production use. For the supported, tested path, follow the main [Getting Started](GETTING_STARTED.md) guide (single-workspace). This document describes the intended multi-tenant design, not a shipped feature.
 
-Healthclaw is architected from the ground up to isolate contexts. This means you can onboard your entire family into the system using a single host, and **each family member will securely receive their own private assistant container** with no memory bleed between them. 
+Healthclaw is architected to isolate contexts. The design goal is that you could onboard an entire family on a single host, where **each family member would receive their own private assistant container** with no memory bleed between them. 
 
 Coupled with Google's localized Gemma model via Ollama, this provides a highly private, subscription-free, family-scale setup.
 
