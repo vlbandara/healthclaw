@@ -66,7 +66,7 @@ dependencies = [
     "prometheus-client>=0.22.0,<1.0.0",
     "redis[hiredis]>=4.2.0,<6.0.0",
     "slowapi>=0.1.9,<1.0.0",
-    "langfuse>=3.0.0,<4.0.0",
+    "langfuse>=3.0.0,<5.0.0",
     "mem0ai>=1.0.0,<2.0.0",
 ]
 
